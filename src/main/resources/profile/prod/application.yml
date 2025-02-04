@@ -1,0 +1,37 @@
+server:
+  port: 10008
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+
+      routes:
+        - id: AUTH-SERVICE
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/auth/**,/communications/**,/user/**
+
+        - id: EMAIL-SERVICE
+          uri: lb://EMAIL-SERVICE
+          predicates:
+            - Path=/email-connector/**
+
+        - id: PASS-MANAGER-SERVICE
+          uri: lb://PASS-MANAGER-SERVICE
+          predicates:
+            - Path=/password-manager/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: https://eureka.guardianservices.in/
+  instance:
+    prefer-ip-address: true
+
