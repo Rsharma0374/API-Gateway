@@ -40,19 +40,50 @@
 			<version>4.2.0</version>
 		</dependency>
 
-<!--		&lt;!&ndash; https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-starter-openfeign &ndash;&gt;-->
-<!--		<dependency>-->
-<!--			<groupId>org.springframework.cloud</groupId>-->
-<!--			<artifactId>spring-cloud-starter-openfeign</artifactId>-->
-<!--			<version>4.2.0</version>-->
-<!--		</dependency>-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
+
+		<!-- Spring Boot Security (if authentication is used) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>jakarta.servlet</groupId>
+			<artifactId>jakarta.servlet-api</artifactId>
+			<version>6.0.0</version>
+		</dependency>
+
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<dependency>
+			<groupId>redis.clients</groupId>
+			<artifactId>jedis</artifactId>
+			<version>4.3.1</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+			<version>3.2.2</version> <!-- Use the latest compatible version -->
+		</dependency>
 	</dependencies>
+
+
 	<dependencyManagement>
 		<dependencies>
 			<!-- https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-dependencies -->
@@ -66,38 +97,6 @@
 
 		</dependencies>
 	</dependencyManagement>
-
-	<profiles>
-		<!-- DEV Profile -->
-		<profile>
-			<id>dev</id>
-			<activation>
-				<activeByDefault>true</activeByDefault>
-			</activation>
-			<build>
-				<resources>
-					<resource>
-						<directory>src/main/resources/profile/dev</directory>
-					</resource>
-				</resources>
-			</build>
-		</profile>
-
-		<!-- PROD Profile -->
-		<profile>
-			<id>prod</id>
-			<activation>
-				<activeByDefault>false</activeByDefault>
-			</activation>
-			<build>
-				<resources>
-					<resource>
-						<directory>src/main/resources/profile/prod</directory>
-					</resource>
-				</resources>
-			</build>
-		</profile>
-	</profiles>
 
 	<build>
 		<plugins>
