@@ -1,44 +1,49 @@
 server:
   port: 10008
-
 spring:
-  application:
-    name: api-gateway
   cloud:
     gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-#
-#      globalcors:
-#        cors-configurations:
-#          '[/**]':
-#            allowedOrigins: "*"
-#            allowedMethods: "*"
-#            allowedHeaders: "*"
-#            allowCredentials: true
-
       routes:
         - id: AUTH-SERVICE
           uri: lb://AUTH-SERVICE
           predicates:
             - Path=/auth/**,/communications/**,/user/**,/api/**
+          filters:
+            - AuthenticationFilter
 
         - id: EMAIL-SERVICE
           uri: lb://EMAIL-SERVICE
           predicates:
             - Path=/email-connector/**
+          filters:
+            - AuthenticationFilter
 
         - id: PASS-MANAGER-SERVICE
           uri: lb://PASS-MANAGER-SERVICE
           predicates:
             - Path=/password-manager/**
+          filters:
+            - AuthenticationFilter
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      httpclient:
+        wiretap: true
+  application:
+    name: API-GATEWAY-SERVICE
 
-        - id: API-GATEWAY
-          uri: lb://API-GATEWAY
-          predicates:
-            - Path=/**
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.http.server.reactive: DEBUG
+
+
+#        - id: API-GATEWAY
+#          uri: lb://API-GATEWAY
+#          predicates:
+#            - Path=/**
 
 eureka:
   client:
@@ -46,4 +51,4 @@ eureka:
       defaultZone: http://localhost:8761/eureka/
   instance:
     prefer-ip-address: true
-
+    hostname: localhost

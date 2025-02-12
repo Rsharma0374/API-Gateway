@@ -1,0 +1,69 @@
+package in.guardianservices.api_gateway.constants;
+
+public enum PublicEndpoint {
+
+    USER_HELLO("/user/hello", false, false),
+    AUTH_VALIDATE_TOKEN("/auth/validate-token", false, true),
+    COMM_VALIDATE_OTP_RESET_PASSWORD("/communications/validate-otp-reset-password", true, false),
+    COMM_VALIDATE_EMAIL_OTP("/communications/validate-email-otp", true, false),
+    AUTH_VALIDATE_TFA_OTP("/auth/validate-tfa-otp", true, false),
+    USER_SEND_EMAIL_OTP("/user/send-email-otp", true, false),
+    COMM_SEND_EMAIL_OTP("/communications/send-email-otp", true, false),
+    AUTH_FORGET_PASSWORD("/auth/forget-password", true, false),
+    AUTH_USER_LOGIN("/auth/user-login", true, false),
+    AUTH_CREATE_USER("/auth/create-user", true, false),
+    AUTH_LOGOUT("/auth/logout", true, true),
+    EMAIL_WELCOME("/email-connector/welcome", false, false),
+    EMAIL_SEND_MAIL("/email-connector/send-mail", true, true),
+    EMAIL_SEND_PORTFOLIO_MESSAGE("/email-connector/send-portfolio-message", false, false),
+    EMAIL_GET_CURRENT_DAY_STATS("/email-connector/get-current-day-statistics", false, false);
+
+    private final String path;
+    private final boolean requiresDecryption;
+    private final boolean tokenRequired;
+
+    PublicEndpoint(String path, boolean requiresDecryption, boolean tokenRequired) {
+        this.path = path;
+        this.requiresDecryption = requiresDecryption;
+        this.tokenRequired = tokenRequired;
+    }
+
+    public String getPath() {
+        return path;
+    }
+
+    public boolean requiresDecryption() {
+        return requiresDecryption;
+    }
+
+    public boolean tokenRequired() {
+        return tokenRequired;
+    }
+
+    public static boolean isPublicEndpoint(String url) {
+        for (PublicEndpoint endpoint : values()) {
+            if (endpoint.getPath().equals(url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean requiresDecryption(String url) {
+        for (PublicEndpoint endpoint : values()) {
+            if (endpoint.getPath().equals(url)) {
+                return endpoint.requiresDecryption();
+            }
+        }
+        return false;
+    }
+
+    public static boolean tokenRequired(String url) {
+        for (PublicEndpoint endpoint : values()) {
+            if (endpoint.getPath().equals(url)) {
+                return endpoint.tokenRequired();
+            }
+        }
+        return false;
+    }
+}
