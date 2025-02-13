@@ -85,10 +85,12 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
             try {
                 ServerHttpRequest request = exchange.getRequest();
                 String url = request.getURI().getPath();
+                log.warn("Request URL: {}", url);
 
                 boolean isPublicEndPoint = PublicEndpoint.isPublicEndpoint(url);
                 boolean isDecryptionRequired = PublicEndpoint.requiresDecryption(url);
                 boolean isTokenRequired = PublicEndpoint.tokenRequired(url);
+                log.warn("isTokenRequired: {} , isPublicEndPoint: {}, isDecryptionRequired: {}", isTokenRequired, isPublicEndPoint, isDecryptionRequired);
 
                 if (isPublicEndPoint && !isDecryptionRequired) {
                     return chain.filter(exchange);
@@ -97,6 +99,7 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
                 if (isTokenRequired) {
                     String token = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
                     String username = request.getHeaders().getFirst("userName");
+                    log.warn("token: {} , username: {}", token, username);
                     if (token == null || !token.startsWith("Bearer ")) {
                         return handleError(exchange, "Authorization header is not valid");
                     }
