@@ -23,7 +23,7 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // ✅ Use patterns instead of "*" when credentials are enabled
-        config.setAllowedOriginPatterns(List.of("http://localhost:5173", "https://apigw.guardianservices.in"));
+        config.setAllowedOriginPatterns(List.of("http://localhost:5173", "https://apigw.guardianservices.in", "https://passmanager.guardianservices.in"));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
