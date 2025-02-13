@@ -1,8 +1,11 @@
 package in.guardianservices.api_gateway.constants;
 
+import lombok.Getter;
+
 public enum PublicEndpoint {
 
     USER_HELLO("/user/hello", false, false),
+    APIGW_KEY("/gateway/key", false, false),
     AUTH_VALIDATE_TOKEN("/auth/validate-token", false, true),
     COMM_VALIDATE_OTP_RESET_PASSWORD("/communications/validate-otp-reset-password", true, false),
     COMM_VALIDATE_EMAIL_OTP("/communications/validate-email-otp", true, false),
@@ -18,6 +21,7 @@ public enum PublicEndpoint {
     EMAIL_SEND_PORTFOLIO_MESSAGE("/email-connector/send-portfolio-message", false, false),
     EMAIL_GET_CURRENT_DAY_STATS("/email-connector/get-current-day-statistics", false, false);
 
+    @Getter
     private final String path;
     private final boolean requiresDecryption;
     private final boolean tokenRequired;
@@ -26,10 +30,6 @@ public enum PublicEndpoint {
         this.path = path;
         this.requiresDecryption = requiresDecryption;
         this.tokenRequired = tokenRequired;
-    }
-
-    public String getPath() {
-        return path;
     }
 
     public boolean requiresDecryption() {
@@ -55,7 +55,7 @@ public enum PublicEndpoint {
                 return endpoint.requiresDecryption();
             }
         }
-        return false;
+        return true;
     }
 
     public static boolean tokenRequired(String url) {
@@ -64,6 +64,6 @@ public enum PublicEndpoint {
                 return endpoint.tokenRequired();
             }
         }
-        return false;
+        return true;
     }
 }

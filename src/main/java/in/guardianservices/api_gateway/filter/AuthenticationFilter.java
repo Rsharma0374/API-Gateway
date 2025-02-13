@@ -52,8 +52,6 @@ import static java.util.function.Function.identity;
 @Slf4j
 public class AuthenticationFilter extends AbstractGatewayFilterFactory<AuthenticationFilter.Config> {
 
-    @Autowired
-    private RouteValidator routeValidator;
 
     @Autowired
     private RedisService redisService;
@@ -83,63 +81,60 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
 
     @Override
     public GatewayFilter apply(Config config) {
+        return new OrderedGatewayFilter((exchange, chain) -> {
+            try {
+                ServerHttpRequest request = exchange.getRequest();
+                String url = request.getURI().getPath();
 
+                boolean isPublicEndPoint = PublicEndpoint.isPublicEndpoint(url);
+                boolean isDecryptionRequired = PublicEndpoint.requiresDecryption(url);
+                boolean isTokenRequired = PublicEndpoint.tokenRequired(url);
 
+                if (isPublicEndPoint && !isDecryptionRequired) {
+                    return chain.filter(exchange);
+                }
 
-        return new OrderedGatewayFilter( (exchange, chain) -> {
+                if (isTokenRequired) {
+                    String token = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+                    String username = request.getHeaders().getFirst("userName");
+                    if (token == null || !token.startsWith("Bearer ")) {
+                        return handleError(exchange, "Authorization header is not valid");
+                    }
+                    token = token.substring(7);
+                    try {
+                        String jwtToken = (String) redisService.getValueFromRedis(token);
+                        jwtService.validateToken(jwtToken, username);
+                    } catch (RuntimeException e) {
+                        return handleError(exchange, "Authorization header not present");
+                    }
+                }
 
-            ServerHttpRequest request = exchange.getRequest();
+                log.info("Applying encrypt-decrypt filter");
 
-            String url = request.getURI().getPath();
+                return DataBufferUtils.join(exchange.getRequest().getBody())
+                        .flatMap(dataBuffer -> {
+                            try {
+                                ServerHttpRequest mutatedHttpRequest = getServerHttpRequest(exchange, dataBuffer);
+                                ServerHttpResponse mutatedHttpResponse = getServerHttpResponse(exchange);
+                                return chain.filter(exchange.mutate()
+                                        .request(mutatedHttpRequest)
+                                        .response(mutatedHttpResponse)
+                                        .build());
+                            } catch (Exception e) {
+                                log.error("Error processing request", e);
+                                return handleError(exchange, e.getMessage());
+                            }
+                        })
+                        .onErrorResume(e -> {
+                            log.error("Error in filter chain", e);
+                            return handleError(exchange, e.getMessage());
+                        });
 
-            boolean isPublicEndPoint = PublicEndpoint.isPublicEndpoint(url);
-
-            boolean isDecryptionRequired = PublicEndpoint.requiresDecryption(url);
-
-            boolean isTokenRequired = PublicEndpoint.tokenRequired(url);
-
-            if (isPublicEndPoint && !isDecryptionRequired) {
-                return chain.filter(exchange);
+            } catch (Exception e) {
+                log.error("Error in authentication filter", e);
+                return handleError(exchange, e.getMessage());
             }
-
-            if (isTokenRequired) {
-                String token = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-                String username = request.getHeaders().getFirst("userName");
-                if (token == null || !token.startsWith("Bearer ")) {
-                    throw new RuntimeException("Authorization header is not valid");
-                }
-                token = token.substring(7);
-                try {
-                    String jwtToken = (String) redisService.getValueFromRedis(token);
-                    //Call to auth service
-                    jwtService.validateToken(jwtToken, username);
-                } catch (RuntimeException e) {
-                    throw new RuntimeException("Authorization header not present");
-                }
-            }
-
-
-
-            log.info("Applying encrypt-decrypt filter");
-
-            return DataBufferUtils.join(exchange.getRequest().getBody()).flatMap(dataBuffer -> {
-
-                ServerHttpRequest mutatedHttpRequest = null;
-                try {
-                    mutatedHttpRequest = getServerHttpRequest(exchange, dataBuffer);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-
-                ServerHttpResponse mutatedHttpResponse = getServerHttpResponse(exchange);
-
-                return chain.filter(exchange.mutate().request(mutatedHttpRequest).response(mutatedHttpResponse).build());
-
-            });
-
         }, -2);
-
-
     }
 
     private ServerHttpRequest getServerHttpRequest(ServerWebExchange exchange, DataBuffer dataBuffer) throws Exception {
@@ -202,6 +197,9 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
         String id = exchange.getRequest().getHeaders().getFirst("sKeyId");
         String key = StringUtils.isBlank(id) ? null
                 : (String) redisService.getValueFromRedis(id);
+        if (exchange.getRequest().getURI().getPath().equalsIgnoreCase(PublicEndpoint.AUTH_LOGOUT.getPath())) {
+            redisService.clearKeyFromRedis(id);
+        }
         return new ServerHttpResponseDecorator(originalResponse) {
 
             @Override
@@ -311,6 +309,35 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
         return rawRef.get();
     }
 
+    private Mono<Void> handleError(ServerWebExchange exchange, String message) {
+        ServerHttpResponse response = exchange.getResponse();
+        response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> jsonResponse = new HashMap<>();
+        Map<String, Object> status = new HashMap<>();
+        status.put("iStatus", 401);
+        status.put("sStatus", "UNAUTHORIZED");
+        jsonResponse.put("oStatus", status);
+
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("sErrorType", "SYSTEM");
+        errorDetails.put("sErrorCode", "401");
+        errorDetails.put("sMessage", "Access Denied !! " + message);
+        errorDetails.put("dFieldValue", 0.0);
+
+        jsonResponse.put("aError", List.of(errorDetails));
+
+        byte[] bytes = new byte[0];
+        try {
+            bytes = new ObjectMapper().writeValueAsBytes(jsonResponse);
+        } catch (JsonProcessingException e) {
+            log.error("Error while converting json to bytes", e);
+        }
+
+        DataBuffer buffer = response.bufferFactory().wrap(bytes);
+        return response.writeWith(Mono.just(buffer));
+    }
 
 
 }
