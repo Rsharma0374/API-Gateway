@@ -24,6 +24,13 @@ spring:
             - Path=/password-manager/**
           filters:
             - AuthenticationFilter
+
+        - id: URL-SHORT-SERVICE
+          uri: lb://URL-SHORT-SERVICE
+          predicates:
+            - Path=/url-service/**
+          filters:
+            - AuthenticationFilter
       discovery:
         locator:
           enabled: true
