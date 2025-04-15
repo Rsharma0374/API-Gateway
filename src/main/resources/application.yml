@@ -46,7 +46,7 @@ logging:
     org.springframework.cloud.gateway: WARN
     org.springframework.http.server.reactive: WARN
     root: debug
-    in.guardianservices.api_gateway: DEBUG
+    in.guardianservices.api_gateway: WARN
 
 
 #        - id: API-GATEWAY
@@ -54,12 +54,20 @@ logging:
 #          predicates:
 #            - Path=/**
 
+#eureka:
+#  client:
+#    service-url:
+#      defaultZone: http://eureka-0.eureka.default.svc.cluster.local:8761/eureka
+#    register-with-eureka: true
+#    fetch-registry: true
+#  instance:
+#    prefer-ip-address: true
+#    instanceId: ${spring.cloud.client.hostname}:${spring.application.name}:${server.port}
 eureka:
   client:
     service-url:
-      defaultZone: http://eureka-0.eureka.default.svc.cluster.local:8761/eureka
+      defaultZone: http://localhost:8761/eureka/
     register-with-eureka: true
     fetch-registry: true
   instance:
     prefer-ip-address: true
-    instanceId: ${spring.cloud.client.hostname}:${spring.application.name}:${server.port}
