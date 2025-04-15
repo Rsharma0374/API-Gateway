@@ -22,6 +22,10 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 10008
+          volumeMounts:
+            - name: api-gateway-config-volume
+              mountPath: /opt/configs
+              readOnly: true
           env:
             - name: SPRING_APPLICATION_JSON
               value: '{
