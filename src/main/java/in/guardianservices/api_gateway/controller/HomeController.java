@@ -2,6 +2,7 @@ package in.guardianservices.api_gateway.controller;
 
 import in.guardianservices.api_gateway.security.AESUtil;
 import in.guardianservices.api_gateway.service.RedisService;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,11 @@ import java.util.concurrent.TimeUnit;
 @RequestMapping("/gateway")
 public class HomeController {
     private static Logger logger = LoggerFactory.getLogger(HomeController.class);
+
+    @PostConstruct
+    public void init() {
+        logger.warn("HomeController initialized");
+    }
 
     @Autowired
     private RedisService redisService;

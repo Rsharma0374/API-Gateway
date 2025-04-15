@@ -1,5 +1,8 @@
 package in.guardianservices.api_gateway.security;
 
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -10,7 +13,13 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 public class AESUtil {
+
+    @PostConstruct
+    public void init() {
+        log.info("AESUtil init");
+    }
 
     private static final String ALGORITHM = "AES";
     private static final String TRANSFORMATION = "AES/CBC/PKCS5Padding";
