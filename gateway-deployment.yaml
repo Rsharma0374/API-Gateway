@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: rsharma0374/api-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 10008
+          env:
+            - name: SPRING_APPLICATION_JSON
+              value: '{
+                "server": {
+                  "port": 10008,
+                  "address": "0.0.0.0"
+                },
+                "spring": {
+                  "application": {
+                    "name": "API-GATEWAY"
+                  }
+                },
+                "eureka": {
+                  "client": {
+                    "serviceUrl": {
+                      "defaultZone": "http://eureka-0.eureka.default.svc.cluster.local:8761/eureka"
+                    },
+                    "register-with-eureka": true,
+                    "fetch-registry": true
+                  },
+                  "instance": {
+                    "prefer-ip-address": true,
+                    "instanceId": "${spring.cloud.client.hostname}:${spring.application.name}:${server.port}"
+                  }
+                }
+              }'
