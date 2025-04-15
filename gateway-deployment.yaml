@@ -12,6 +12,10 @@ spec:
       labels:
         app: api-gateway
     spec:
+      volumes:
+        - name: api-gateway-config-volume
+          configMap:
+            name: user-auth-config
       containers:
         - name: api-gateway
           image: rsharma0374/api-gateway:latest
