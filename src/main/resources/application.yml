@@ -45,7 +45,7 @@ logging:
   level:
     org.springframework.cloud.gateway: WARN
     org.springframework.http.server.reactive: WARN
-    root: debug
+    root: WARN
     in.guardianservices.api_gateway: WARN
 
 
