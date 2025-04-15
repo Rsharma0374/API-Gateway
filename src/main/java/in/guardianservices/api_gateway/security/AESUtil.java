@@ -32,7 +32,7 @@ public class AESUtil {
     // Generate a random AES-256 key
     public static String generateKey() throws Exception {
         KeyGenerator keyGen = KeyGenerator.getInstance(ALGORITHM);
-        keyGen.init(256);
+        keyGen.init(128);
         SecretKey secretKey = keyGen.generateKey();
         return Base64.getEncoder().encodeToString(secretKey.getEncoded());
     }
