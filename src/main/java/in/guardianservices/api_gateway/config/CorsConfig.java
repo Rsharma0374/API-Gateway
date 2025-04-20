@@ -24,6 +24,7 @@ public class CorsConfig {
 
         // ✅ Use patterns instead of "*" when credentials are enabled
         config.setAllowedOriginPatterns(List.of("http://localhost:5173",
+                "http://localhost:8081",
                 "https://apigw.guardianservices.in",
                 "https://passmanager.guardianservices.in",
                 "https://shortener.guardianservices.in"));
