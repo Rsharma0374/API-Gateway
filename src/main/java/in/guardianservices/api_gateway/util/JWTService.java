@@ -1,5 +1,6 @@
 package in.guardianservices.api_gateway.util;
 
+import in.guardianservices.api_gateway.config.InfisicalConfig;
 import in.guardianservices.api_gateway.service.RedisService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -23,13 +24,15 @@ public class JWTService {
     private RedisService redisService;
 
     private static String secretKey = "";
+
     public static final String SECRET_KEY = "SECRET_KEY";
-    private static final String USER_AUTH_PROPERTIES_PATH = "/opt/configs/userAuth.properties";
 
     static {
-        Properties properties = ResponseUtility.fetchProperties(USER_AUTH_PROPERTIES_PATH);
-        if (null != properties) {
-            secretKey = properties.getProperty(SECRET_KEY);
+        try {
+            Map config = InfisicalConfig.fetchConfig("UserAuthConfig");
+            secretKey = null != config ? (String) config.get(SECRET_KEY) : null;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
