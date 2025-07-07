@@ -31,6 +31,13 @@ spring:
             - Path=/url-service/**
           filters:
             - AuthenticationFilter
+
+        - id: DOC-UTILITY-SERVICE
+          uri: lb://DOC-UTILITY-SERVICE
+          predicates:
+            - Path=/doc-service/**
+          filters:
+            - AuthenticationFilter
       discovery:
         locator:
           enabled: true

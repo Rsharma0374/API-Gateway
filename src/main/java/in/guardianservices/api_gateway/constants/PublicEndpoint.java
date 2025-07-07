@@ -19,7 +19,9 @@ public enum PublicEndpoint {
     EMAIL_WELCOME("/email-connector/welcome", false, false),
     EMAIL_SEND_MAIL("/email-connector/send-mail", true, true),
     EMAIL_SEND_PORTFOLIO_MESSAGE("/email-connector/send-portfolio-message", false, false),
-    EMAIL_GET_CURRENT_DAY_STATS("/email-connector/get-current-day-statistics", false, false);
+    EMAIL_GET_CURRENT_DAY_STATS("/email-connector/get-current-day-statistics", false, false),
+    DOCUMENT_UTILITY_LOCK("/doc-service/pdf/lock", false, false),
+    DOCUMENT_UTILITY_UNLOCK("/doc-service/pdf/unlock", false, false);
 
     @Getter
     private final String path;
