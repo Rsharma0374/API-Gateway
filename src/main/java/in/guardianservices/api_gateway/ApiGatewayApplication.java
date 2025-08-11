@@ -9,7 +9,6 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @EnableCaching
-//@EnableDiscoveryClient
 @SpringBootApplication
 @EnableFeignClients
 public class ApiGatewayApplication {

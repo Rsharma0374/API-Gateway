@@ -1,59 +1,56 @@
 server:
   port: 10008
+
 spring:
   cloud:
     gateway:
       routes:
         - id: AUTH-SERVICE
-          uri: lb://AUTH-SERVICE
+          uri: http://auth-service:10001
           predicates:
             - Path=/auth/**,/communications/**,/user/**,/api/**
           filters:
             - AuthenticationFilter
 
         - id: EMAIL-SERVICE
-          uri: lb://EMAIL-SERVICE
+          uri: http://email-connector-service:10002
           predicates:
             - Path=/email-connector/**
           filters:
             - AuthenticationFilter
 
         - id: PASS-MANAGER-SERVICE
-          uri: lb://PASS-MANAGER-SERVICE
+          uri: http://pass-manager-service:10003
           predicates:
             - Path=/password-manager/**
           filters:
             - AuthenticationFilter
 
         - id: URL-SHORT-SERVICE
-          uri: lb://URL-SHORT-SERVICE
+          uri: http://url-short-service:10004
           predicates:
             - Path=/url-service/**
           filters:
             - AuthenticationFilter
 
         - id: DOC-UTILITY-SERVICE
-          uri: lb://DOC-UTILITY-SERVICE
+          uri: http://doc-utility-service:10005
           predicates:
             - Path=/doc-service/**
           filters:
             - AuthenticationFilter
 
         - id: PAYMENT-SERVICE
-          uri: lb://PAYMENT-SERVICE
+          uri: http://payment-service:10006
           predicates:
             - Path=/payment/**
           filters:
             - AuthenticationFilter
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
       httpclient:
         wiretap: true
-  application:
-    name: API-GATEWAY-SERVICE
 
+  application:
+    name: api-gateway-service
 
 logging:
   level:
@@ -61,27 +58,3 @@ logging:
     org.springframework.http.server.reactive: WARN
     root: WARN
     in.guardianservices.api_gateway: WARN
-
-
-#        - id: API-GATEWAY
-#          uri: lb://API-GATEWAY
-#          predicates:
-#            - Path=/**
-
-#eureka:
-#  client:
-#    service-url:
-#      defaultZone: http://eureka-0.eureka.default.svc.cluster.local:8761/eureka
-#    register-with-eureka: true
-#    fetch-registry: true
-#  instance:
-#    prefer-ip-address: true
-#    instanceId: ${spring.cloud.client.hostname}:${spring.application.name}:${server.port}
-eureka:
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-    register-with-eureka: true
-    fetch-registry: true
-  instance:
-    prefer-ip-address: true

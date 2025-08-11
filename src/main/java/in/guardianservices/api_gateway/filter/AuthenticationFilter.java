@@ -8,7 +8,7 @@ import in.guardianservices.api_gateway.security.AESUtil;
 import in.guardianservices.api_gateway.service.RedisService;
 import in.guardianservices.api_gateway.util.JWTService;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.util.Strings;
 import org.reactivestreams.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
