@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway-service
+  template:
+    metadata:
+      labels:
+        app: api-gateway-service
+    spec:
+      containers:
+        - name: api-gateway-service
+          image: rsharma0374/api-gateway-service:latest
+          ports:
+            - containerPort: 10008
+          volumeMounts:
+            - name: infisical-secret-volume
+              mountPath: /opt/configs/infisical.properties
+              subPath: infisical.properties
+              readOnly: true
+      volumes:
+        - name: infisical-secret-volume
+          secret:
+            secretName: infisical-secret
+            items:
+              - key: infisical.properties
+                path: infisical.properties

@@ -1,25 +1,42 @@
+# =========================
+# Build Stage (Maven + Java 21)
+# =========================
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 
-# Step 1: Build the Java Maven application
-FROM maven:3.9.9-eclipse-temurin-17 AS build
-# Set the working directory
-WORKDIR /build
+# Verify Java & Maven versions early to fail fast if wrong
+RUN java -version && mvn -version
 
-# Copy the Maven project files
+WORKDIR /app
+
+# Cache dependencies first (faster builds)
 COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Copy source code & build
 COPY src ./src
+RUN mvn clean package -DskipTests -B
 
-# Build the application
-RUN mvn clean package
+# Verify JAR file exists
+RUN ls -la /app/target/
 
-# Stage 2: Run the application
-FROM openjdk:17-jdk-slim
+# =========================
+# Runtime Stage (Lightweight JRE)
+# =========================
+FROM eclipse-temurin:21-jre-alpine
 
+# Security: Create non-root user
+RUN addgroup -S spring && adduser -S spring -G spring
+USER root
+RUN apk add --no-cache curl
+USER spring
 
-# Copy Java application
-COPY --from=build /build/target/*.jar /app/app.jar
+WORKDIR /app
 
-# Expose ports for Nginx and Java application
+# Copy JAR from build stage
+COPY --from=build --chown=spring:spring /app/target/*.jar api-gateway.jar
+
+# Application port
 EXPOSE 10008
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# Run app
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar api-gateway.jar"]

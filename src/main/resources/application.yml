@@ -38,6 +38,13 @@ spring:
             - Path=/doc-service/**
           filters:
             - AuthenticationFilter
+
+        - id: PAYMENT-SERVICE
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/payment/**
+          filters:
+            - AuthenticationFilter
       discovery:
         locator:
           enabled: true

@@ -28,7 +28,10 @@ public enum PublicEndpoint {
     DOCUMENT_UTILITY_PDF_COMPRESS("/doc-service/pdf/compress", false, false),
     DOCUMENT_UTILITY_PDF_MERGE("/doc-service/pdf/merge", false, false),
     DOCUMENT_UTILITY_PDF_SPLIT("/doc-service/pdf/split", false, false),
-    DOCUMENT_UTILITY_PDF_TO_IMAGES("/doc-service/pdf/to-images", false, false);
+    DOCUMENT_UTILITY_PDF_TO_IMAGES("/doc-service/pdf/to-images", false, false),
+    DOCUMENT_UTILITY_PDF_TO_IMAGES_ASYNC("/doc-service/pdf/to-images/async", false, false),
+    PAYMENT_CREATE_ORDER("/payment/api/v1/create-order", true, false),
+    PAYMENT_GET_KEY("/payment/api/v1/get-key", true, false);
 
     @Getter
     private final String path;

@@ -114,24 +114,52 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
 
                 log.info("Applying encrypt-decrypt filter");
 
-                return DataBufferUtils.join(exchange.getRequest().getBody())
-                        .flatMap(dataBuffer -> {
-                            try {
-                                ServerHttpRequest mutatedHttpRequest = getServerHttpRequest(exchange, dataBuffer);
-                                ServerHttpResponse mutatedHttpResponse = getServerHttpResponse(exchange);
-                                return chain.filter(exchange.mutate()
-                                        .request(mutatedHttpRequest)
-                                        .response(mutatedHttpResponse)
-                                        .build());
-                            } catch (Exception e) {
-                                log.error("Error processing request", e);
+                if (request.getMethod() != null && request.getMethod().matches("GET")) {
+                    // No body expected → just decorate the response
+                    ServerHttpResponse mutatedHttpResponse = getServerHttpResponse(exchange);
+                    return chain.filter(exchange.mutate()
+                            .response(mutatedHttpResponse)
+                            .build());
+                } else {
+                    // Handle request body decryption for POST/PUT, etc.
+                    return DataBufferUtils.join(exchange.getRequest().getBody())
+                            .flatMap(dataBuffer -> {
+                                try {
+                                    ServerHttpRequest mutatedHttpRequest = getServerHttpRequest(exchange, dataBuffer);
+                                    ServerHttpResponse mutatedHttpResponse = getServerHttpResponse(exchange);
+                                    return chain.filter(exchange.mutate()
+                                            .request(mutatedHttpRequest)
+                                            .response(mutatedHttpResponse)
+                                            .build());
+                                } catch (Exception e) {
+                                    log.error("Error processing request", e);
+                                    return handleError(exchange, e.getMessage());
+                                }
+                            })
+                            .onErrorResume(e -> {
+                                log.error("Error in filter chain", e);
                                 return handleError(exchange, e.getMessage());
-                            }
-                        })
-                        .onErrorResume(e -> {
-                            log.error("Error in filter chain", e);
-                            return handleError(exchange, e.getMessage());
-                        });
+                            });
+                }
+//
+//                return DataBufferUtils.join(exchange.getRequest().getBody())
+//                        .flatMap(dataBuffer -> {
+//                            try {
+//                                ServerHttpRequest mutatedHttpRequest = getServerHttpRequest(exchange, dataBuffer);
+//                                ServerHttpResponse mutatedHttpResponse = getServerHttpResponse(exchange);
+//                                return chain.filter(exchange.mutate()
+//                                        .request(mutatedHttpRequest)
+//                                        .response(mutatedHttpResponse)
+//                                        .build());
+//                            } catch (Exception e) {
+//                                log.error("Error processing request", e);
+//                                return handleError(exchange, e.getMessage());
+//                            }
+//                        })
+//                        .onErrorResume(e -> {
+//                            log.error("Error in filter chain", e);
+//                            return handleError(exchange, e.getMessage());
+//                        });
 
             } catch (Exception e) {
                 log.error("Error in authentication filter", e);
