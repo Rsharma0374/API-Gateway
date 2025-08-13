@@ -14,7 +14,7 @@ RUN mvn dependency:go-offline -B
 
 # Copy source code & build
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN mvn clean package -DskipTests -P prod -B
 
 # Verify JAR file exists
 RUN ls -la /app/target/
@@ -39,4 +39,4 @@ COPY --from=build --chown=spring:spring /app/target/*.jar api-gateway.jar
 EXPOSE 10007
 
 # Run app
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar api-gateway.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar api-gateway.jar --spring.profiles.active=prod"]

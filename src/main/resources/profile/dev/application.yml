@@ -1,0 +1,60 @@
+server:
+  port: 10007
+
+spring:
+  application:
+    name: api-gateway-service
+
+  cloud:
+    gateway:
+      routes:
+        - id: AUTH-SERVICE
+          uri: http://localhost:10001
+          predicates:
+            - Path=/auth-service/**
+          filters:
+            - AuthenticationFilter
+
+        - id: EMAIL-SERVICE
+          uri: http://localhost:10002
+          predicates:
+            - Path=/email-connector/**
+          filters:
+            - AuthenticationFilter
+
+        - id: PASS-MANAGER-SERVICE
+          uri: http://localhost:10003
+          predicates:
+            - Path=/password-manager/**
+          filters:
+            - AuthenticationFilter
+
+        - id: URL-SHORT-SERVICE
+          uri: http://localhost:10004
+          predicates:
+            - Path=/url-service/**
+          filters:
+            - AuthenticationFilter
+
+        - id: DOC-UTILITY-SERVICE
+          uri: http://localhost:10005
+          predicates:
+            - Path=/doc-service/**
+          filters:
+            - AuthenticationFilter
+
+        - id: PAYMENT-SERVICE
+          uri: http://localhost:10006
+          predicates:
+            - Path=/payment-service/**
+          filters:
+            - AuthenticationFilter
+      httpclient:
+        wiretap: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: WARN
+    org.springframework.http.server.reactive: WARN
+    root: WARN
+    in.guardianservices.api_gateway: WARN

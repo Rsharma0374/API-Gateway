@@ -8,7 +8,7 @@ spring:
         - id: AUTH-SERVICE
           uri: http://auth-service:10001
           predicates:
-            - Path=/auth/**,/communications/**,/user/**,/api/**
+            - Path=/auth-service/**
           filters:
             - AuthenticationFilter
 
@@ -43,7 +43,7 @@ spring:
         - id: PAYMENT-SERVICE
           uri: http://payment-service:10006
           predicates:
-            - Path=/payment/**
+            - Path=/payment-service/**
           filters:
             - AuthenticationFilter
       httpclient:
