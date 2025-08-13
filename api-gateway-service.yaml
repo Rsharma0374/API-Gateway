@@ -8,6 +8,6 @@ spec:
     app: api-gateway-service
   ports:
     - protocol: TCP
-      port: 10008
-      targetPort: 10008
-      nodePort: 30008
+      port: 10007
+      targetPort: 10007
+      nodePort: 30007

@@ -36,7 +36,7 @@ WORKDIR /app
 COPY --from=build --chown=spring:spring /app/target/*.jar api-gateway.jar
 
 # Application port
-EXPOSE 10008
+EXPOSE 10007
 
 # Run app
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar api-gateway.jar"]
