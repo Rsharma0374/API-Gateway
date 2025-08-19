@@ -27,11 +27,11 @@ public enum PublicEndpoint {
     EMAIL_GET_CURRENT_DAY_STATS("/email-connector/get-current-day-statistics", false, false),
 
     //doc utility service
-    DOCUMENT_UTILITY_WELCOME("/doc-service/welcome", false, false),
+    DOCUMENT_UTILITY_WELCOME("/doc-service/pdf/welcome", false, false),
     DOCUMENT_UTILITY_LOCK("/doc-service/pdf/lock", false, false),
     DOCUMENT_UTILITY_UNLOCK("/doc-service/pdf/unlock", false, false),
-    DOCUMENT_UTILITY_PDF_TO_BASE64("/doc-service/pdf-to-base64", false, false),
-    DOCUMENT_UTILITY_BASE64_TO_PDF("/doc-service/base64-to-pdf", false, false),
+    DOCUMENT_UTILITY_PDF_TO_BASE64("/doc-service/pdf/pdf-to-base64", false, false),
+    DOCUMENT_UTILITY_BASE64_TO_PDF("/doc-service/pdf/base64-to-pdf", false, false),
     DOCUMENT_UTILITY_PDF_COMPRESS("/doc-service/pdf/compress", false, false),
     DOCUMENT_UTILITY_PDF_MERGE("/doc-service/pdf/merge", false, false),
     DOCUMENT_UTILITY_PDF_SPLIT("/doc-service/pdf/split", false, false),
