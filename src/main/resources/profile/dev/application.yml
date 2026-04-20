@@ -1,0 +1,65 @@
+server:
+  port: 10008
+spring:
+  application:
+    name: API-GATEWAY-SERVICE
+  cloud:
+    consul:
+      host: localhost
+      port: 8500
+      discovery:
+        register: true
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      httpclient:
+        wiretap: true
+      routes:
+        - id: GATEWAY-TEST
+          uri: http://localhost:${server.port}
+          predicates:
+            - Path=/gateway-test/**
+          filters:
+            - SetPath=/internal-test/rate-limit
+
+        - id: AUTH-SERVICE
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/auth/**,/communications/**,/user/**,/api/**
+
+        - id: EMAIL-SERVICE
+          uri: lb://EMAIL-SERVICE
+          predicates:
+            - Path=/email-connector/**
+
+        - id: PASS-MANAGER-SERVICE
+          uri: lb://PASS-MANAGER-SERVICE
+          predicates:
+            - Path=/password-manager/**
+
+        - id: URL-SHORT-SERVICE
+          uri: lb://URL-SHORT-SERVICE
+          predicates:
+            - Path=/url-service/**
+
+        - id: document-service
+          uri: lb://document-service
+          predicates:
+            - Path=/doc-service/**
+
+logging:
+  level:
+    org.springframework.cloud.gateway: WARN
+    org.springframework.http.server.reactive: WARN
+    root: WARN
+    in.guardianservices.api_gateway: WARN
+
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
