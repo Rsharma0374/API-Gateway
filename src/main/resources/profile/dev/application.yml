@@ -1,65 +1,294 @@
+# ============================================================
+# src/main/resources/application.yml
+# API Gateway — Base / Development Configuration
+#
+# This file contains:
+#   - Safe defaults for local development
+#   - Full documentation for every property
+#   - NO secrets — secrets must come from environment
+#     variables, Vault, or AWS Secrets Manager
+#
+# Profile overrides:
+#   application-prod.yml  — production values
+#
+# Environment variable override convention (Spring Boot):
+#   auth.jwt.jwks-url  →  AUTH_JWT_JWKS_URL=https://...
+# ============================================================
+
+# ──────────────────────────────────────────────────────────────
+# Server
+# ──────────────────────────────────────────────────────────────
 server:
   port: 10008
+
+  # Netty (embedded reactive server) tuning
+  netty:
+    # Maximum time to wait for an idle connection to be released
+    connection-timeout: 10s
+    # How long to wait for the client to send request headers
+    idle-timeout: 60s
+
+  # HTTP/2 support (requires TLS in production)
+  http2:
+    enabled: false   # set true in prod behind TLS termination
+
+  # Compression — reduce bandwidth for JSON-heavy responses
+  compression:
+    enabled: true
+    mime-types:
+      - application/json
+      - application/problem+json
+      - text/plain
+    min-response-size: 1024   # only compress responses >= 1 KB
+
+  # Security headers added to every response
+  # Fine-tune or override in prod profile
+  shutdown: graceful   # wait for in-flight requests to complete on shutdown
+
+# ──────────────────────────────────────────────────────────────
+# Spring
+# ──────────────────────────────────────────────────────────────
 spring:
   application:
-    name: API-GATEWAY-SERVICE
-  cloud:
-    consul:
-      host: localhost
-      port: 8500
-      discovery:
-        register: true
-    gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-      httpclient:
-        wiretap: true
-      routes:
-        - id: GATEWAY-TEST
-          uri: http://localhost:${server.port}
-          predicates:
-            - Path=/gateway-test/**
-          filters:
-            - SetPath=/internal-test/rate-limit
+    name: api-gateway
+# ──────────────────────────────────────────────────────────────
+# Spring Security — Reactive Security Auto-Configuration
+# ──────────────────────────────────────────────────────────────
+  security:
+    # Disable the default generated password log line in dev
+    user:
+      name: dev
+      password: "{noop}dev-only-not-for-production"
+      roles: ADMIN
 
-        - id: AUTH-SERVICE
-          uri: lb://AUTH-SERVICE
-          predicates:
-            - Path=/auth/**,/communications/**,/user/**,/api/**
+  # Active profiles — overridden by SPRING_PROFILES_ACTIVE env var
+  profiles:
+    active: dev
 
-        - id: EMAIL-SERVICE
-          uri: lb://EMAIL-SERVICE
-          predicates:
-            - Path=/email-connector/**
+  # Lifecycle: allow in-flight reactive requests to finish during shutdown
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
-        - id: PASS-MANAGER-SERVICE
-          uri: lb://PASS-MANAGER-SERVICE
-          predicates:
-            - Path=/password-manager/**
+  # Reactor Netty access log (separate from application log)
+  reactor:
+    netty:
+      http:
+        server:
+          access-log-enabled: false   # we use RequestLoggingFilter instead
 
-        - id: URL-SHORT-SERVICE
-          uri: lb://URL-SHORT-SERVICE
-          predicates:
-            - Path=/url-service/**
+  # Jackson — global JSON serialisation defaults
+  jackson:
+    default-property-inclusion: non_null    # omit null fields from responses
+    serialization:
+      write-dates-as-timestamps: false      # ISO-8601 strings, not epoch millis
+      indent-output: false                  # compact JSON in production
+    deserialization:
+      fail-on-unknown-properties: false     # forward-compatible with new fields
 
-        - id: document-service
-          uri: lb://document-service
-          predicates:
-            - Path=/doc-service/**
+  # Codec limits — prevent memory exhaustion from large request/response bodies
+  codec:
+    max-in-memory-size: 1MB
 
-logging:
-  level:
-    org.springframework.cloud.gateway: WARN
-    org.springframework.http.server.reactive: WARN
-    root: WARN
-    in.guardianservices.api_gateway: WARN
+# ──────────────────────────────────────────────────────────────
+# Authentication & JWT
+# ──────────────────────────────────────────────────────────────
+auth:
+  jwt:
+    # JWKS endpoint URL of the identity provider (e.g. Auth0, Keycloak, Okta).
+    # MUST be overridden in production via AUTH_JWT_JWKS_URL environment variable.
+    jwks-url: "https://keycloak.guardianservices.in/realms/guardian-service/protocol/openid-connect/certs"
+    # The 'iss' (issuer) claim value all JWTs must carry.
+    # Must exactly match what your identity provider puts in the token.
+    issuer: "https://keycloak.guardianservices.in/realms/guardian-service"
+    # The 'aud' (audience) claim value all JWTs must include.
+    # Set to the unique identifier of this gateway / API resource.
+    audience: "api-gateway"
 
 
+# ──────────────────────────────────────────────────────────────
+# Gateway — Public Path Registry
+# ──────────────────────────────────────────────────────────────
+gateway:
+  # Ant-style path patterns that bypass JWT authentication.
+  # Use ** for multi-segment wildcards, * for single-segment.
+  #
+  # Rules:
+  #   - Every entry MUST start with '/'
+  #   - Keep this list as small as possible — every entry is an attack surface
+  #   - /actuator/** should be restricted at the network/ingress level in prod,
+  #     not made fully public here
+  public-paths:
+    - /health
+    - /actuator/**          # liveness probe (exact)
+    - /actuator/health/**       # liveness + readiness sub-paths
+    - /public/**                # public resources (API docs, OpenAPI spec, etc.)
+    - /fallback/**              # circuit-breaker fallback (must be public)
+    - /test/**
+    - /doc-service/**
 
+# ──────────────────────────────────────────────────────────────
+# Rate Limiting (Bucket4j — token bucket per client IP)
+# ──────────────────────────────────────────────────────────────
+ratelimit:
+  # Maximum number of tokens in a full bucket (= max burst size).
+  # A client can make up to 'capacity' requests instantly before being throttled.
+  capacity: 100
+
+  # Number of tokens added to the bucket per refill period.
+  refill-tokens: 10
+
+  # Refill interval in milliseconds.
+  # Default: 60 000 ms = 1 minute → 10 tokens/minute sustained rate.
+  refill-period-ms: 60000
+
+  # Maximum number of unique client IPs to track simultaneously.
+  # Entries beyond this limit evict the least-recently-used IP.
+  cache-max-size: 100000
+
+  # Idle eviction TTL in hours.
+  # An IP bucket that has not been accessed for this long is evicted.
+  cache-ttl-hours: 1
+
+# ──────────────────────────────────────────────────────────────
+# Resilience4j — Circuit Breakers & Retry
+# ──────────────────────────────────────────────────────────────
+resilience4j:
+  # ── JWKS fetch circuit breaker ──────────────────────────────
+  # (programmatically configured in JwksCache — these are defaults
+  #  for the Actuator health indicator and metrics export)
+  circuitbreaker:
+    instances:
+      jwksFetch:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 3s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+
+      downstreamService:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 2s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+
+  # ── Retry configuration ──────────────────────────────────────
+  retry:
+    instances:
+      jwksFetch:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - in.guardianservices.api_gateway.exception.JwtVerificationException
+
+# ──────────────────────────────────────────────────────────────
+# Spring Boot Actuator — Observability Endpoints
+# ──────────────────────────────────────────────────────────────
 management:
+  server:
+    port: 8081    # expose actuator on a separate port — never exposed publicly
+
   endpoints:
     web:
       exposure:
-        include: health
+        # Explicitly whitelist — never use '*' in production
+        include:
+          - health
+          - info
+          - metrics
+          - prometheus
+          - loggers
+          - circuitbreakers
+      base-path: /actuator
+
+  endpoint:
+    health:
+      # Show full health details on the management port only
+      show-details: always
+      show-components: always
+      probes:
+        # Kubernetes liveness + readiness probes
+        enabled: true
+
+    # Allow runtime log-level changes via POST /actuator/loggers/{name}
+    loggers:
+      enabled: true
+
+  # Micrometer metrics tags applied to every metric
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${spring.profiles.active:dev}
+
+  # Prometheus scrape endpoint at /actuator/prometheus
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+  # Distributed tracing — Micrometer Tracing + Brave
+  tracing:
+    sampling:
+      probability: 1.0    # 100% in dev; reduce to 0.1 (10%) in prod
+
+  # Zipkin trace export (Brave bridge)
+  zipkin:
+    tracing:
+      endpoint: https://zipkin.guardianservices.in/api/v2/spans
+
+# ──────────────────────────────────────────────────────────────
+# Logging
+# ──────────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+
+    # Gateway packages — DEBUG in dev for full request/response detail
+    in.guardianservices.api_gateway: DEBUG
+
+    # Spring Security — INFO to avoid credential noise in logs
+    org.springframework.security: INFO
+
+    # WebFlux router — useful for diagnosing route-matching issues
+    org.springframework.web.reactive: INFO
+
+    # Resilience4j state transitions
+    io.github.resilience4j: INFO
+
+    # Netty — suppress verbose internal logs
+    io.netty: WARN
+    reactor.netty: WARN
+
+  # Structured JSON logging pattern (for Logstash encoder)
+  # Logback config in logback-spring.xml overrides this in prod
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+#  # Log file output (dev only — prod uses stdout for container log collection)
+#  file:
+#    name: logs/api-gateway.log
+
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 7       # keep 7 days of rolled logs
+      clean-history-on-start: false
+
+  # ──────────────────────────────────────────────────────────────
+  # Virtual Threads (Java 21)
+  # ──────────────────────────────────────────────────────────────
+  # Spring Boot 3.2+ supports virtual threads for blocking operations.
+  # In a WebFlux gateway the Netty event loop is non-blocking, so virtual
+  # threads primarily benefit @Async tasks, Spring Security crypto, and
+  # the boundedElastic scheduler used by JwtVerifier / JwksCache.
+  threads:
+    virtual:
+      enabled: true

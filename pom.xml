@@ -1,114 +1,561 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.4.1</version>
-		<relativePath/> <!-- lookup parent from repository -->
-	</parent>
-	<groupId>in.guardianservices</groupId>
-	<artifactId>api-gateway</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
-	<name>api-gateway</name>
-	<description>Api Gateway Microservice</description>
-	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
-	<properties>
-		<java.version>21</java.version>
-		<spring-cloud.version>2024.0.0</spring-cloud.version>
-	</properties>
-	<dependencies>
-		<dependency>
-			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-starter-gateway</artifactId>
-		</dependency>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-		<dependency>
-			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-starter-loadbalancer</artifactId>
-		</dependency>
+    <modelVersion>4.0.0</modelVersion>
 
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
-			<scope>test</scope>
-		</dependency>
+    <!-- =========================================================
+         Project Coordinates
+    ========================================================== -->
+    <groupId>com.yourorg</groupId>
+    <artifactId>api-gateway</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>api-gateway</name>
+    <description>Reactive API Gateway — Spring Boot 3.5.11 / Java 21</description>
 
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-actuator</artifactId>
-		</dependency>
+    <!-- =========================================================
+         Spring Boot Parent (BOM + plugin management)
+    ========================================================== -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.11</version>
+        <relativePath/>
+    </parent>
 
-		<dependency>
-			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-starter-consul-discovery</artifactId>
-		</dependency>
-	</dependencies>
+    <!-- =========================================================
+         Global Properties
+    ========================================================== -->
+    <properties>
+        <!-- Java -->
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
 
-	<profiles>
-		<!-- DEV Profile -->
-		<profile>
-			<id>dev</id>
-			<activation>
-				<activeByDefault>true</activeByDefault>
-			</activation>
-			<build>
-				<resources>
-					<resource>
-						<directory>src/main/resources/profile/dev</directory>
-					</resource>
-				</resources>
-			</build>
-		</profile>
+        <!-- Encoding -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-		<!-- PROD Profile -->
-		<profile>
-			<id>prod</id>
-			<activation>
-				<activeByDefault>false</activeByDefault>
-			</activation>
-			<build>
-				<resources>
-					<resource>
-						<directory>src/main/resources/profile/prod</directory>
-					</resource>
-				</resources>
-			</build>
-		</profile>
-	</profiles>
+        <!-- Dependency Versions (not managed by Spring Boot BOM) -->
+        <nimbus-jose-jwt.version>9.37.3</nimbus-jose-jwt.version>
+        <bucket4j.version>8.10.0</bucket4j.version>
+        <resilience4j.version>2.3.0</resilience4j.version>
 
-	<dependencyManagement>
-		<dependencies>
-			<dependency>
-				<groupId>org.springframework.cloud</groupId>
-				<artifactId>spring-cloud-dependencies</artifactId>
-				<version>${spring-cloud.version}</version>
-				<type>pom</type>
-				<scope>import</scope>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
+        <!-- Plugin Versions -->
+        <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
+        <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
+        <owasp-dependency-check.version>10.0.4</owasp-dependency-check.version>
+        <jacoco-plugin.version>0.8.12</jacoco-plugin.version>
+        <jib-plugin.version>3.4.3</jib-plugin.version>
+    </properties>
 
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-			</plugin>
-		</plugins>
-	</build>
+    <!-- =========================================================
+         Dependencies
+    ========================================================== -->
+    <dependencies>
+
+        <!-- ── Core: Spring WebFlux (Reactive Web) ── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+            <!--
+                Brings in:
+                  - spring-webflux
+                  - reactor-netty (Netty as the embedded server)
+                  - reactor-core
+                  - jackson-databind (JSON)
+            -->
+        </dependency>
+
+        <!-- ── Security: Spring Security Reactive ── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <!--
+                Brings in:
+                  - spring-security-core
+                  - spring-security-webflux
+                  - spring-security-crypto
+            -->
+        </dependency>
+
+        <!-- ── JWT: Nimbus JOSE + JWT ── -->
+        <!--
+            Preferred over jjwt for full JWKS (JWK Set) support,
+            RSA/EC key parsing, and active CVE maintenance.
+            Version 9.37.3 — no known CVEs as of May 2026.
+        -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>${nimbus-jose-jwt.version}</version>
+        </dependency>
+
+        <!-- ── Rate Limiting: Bucket4j Core (in-process) ── -->
+        <!--
+            v8.14.0 uses the new Bucket.builder() API.
+            No Hazelcast/Redis dependency — pure in-JVM for now.
+            Upgrade to bucket4j-redis if distributed rate limiting is needed.
+        -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>${bucket4j.version}</version>
+        </dependency>
+
+        <!-- ── Caching: Caffeine ── -->
+        <!--
+            Managed by Spring Boot BOM — version resolved automatically.
+            Used for JWKS cache (AsyncLoadingCache) and bucket map.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <!-- version managed by spring-boot-starter-parent -->
+        </dependency>
+
+        <!-- ── Resilience: Resilience4j (Circuit Breaker + Retry) ── -->
+        <!--
+            Used to wrap JWKS fetches and downstream service calls.
+            spring-boot starter auto-configures metrics + health indicators.
+        -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>${resilience4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-reactor</artifactId>
+            <version>${resilience4j.version}</version>
+        </dependency>
+
+        <!--
+            resilience4j-rxjava3 — REQUIRED even if RxJava3 is not used directly.
+            resilience4j-spring-boot3 2.x auto-configuration unconditionally
+            references RxJava3OnClasspathCondition at context startup.
+            Without this dependency the application fails to start with:
+              ClassNotFoundException: ...spring6.utils.RxJava3OnClasspathCondition
+        -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-rxjava3</artifactId>
+            <version>${resilience4j.version}</version>
+        </dependency>
+
+        <!-- ── Observability: Actuator ── -->
+        <!--
+            Exposes /actuator/health, /actuator/metrics, /actuator/prometheus.
+            Essential for liveness/readiness probes in Kubernetes.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- ── Observability: Micrometer + Prometheus ── -->
+        <!--
+            Exposes Prometheus-compatible metrics at /actuator/prometheus.
+            Managed by Spring Boot BOM.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <!-- version managed by spring-boot-starter-parent -->
+        </dependency>
+
+        <!-- ── Observability: Micrometer Tracing (Brave/Zipkin) ── -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+            <!-- version managed by spring-boot-starter-parent -->
+        </dependency>
+
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+            <!-- version managed by spring-boot-starter-parent -->
+        </dependency>
+
+        <!-- ── Logging: Logback (default via Spring Boot) + Logstash Encoder ── -->
+        <!--
+            logstash-logback-encoder outputs structured JSON logs —
+            essential for log aggregation pipelines (ELK, Loki, etc.).
+        -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.0</version>
+        </dependency>
+
+        <!-- ── Configuration Metadata (IDE support) ── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ── Validation: Jakarta Bean Validation ── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- ═══════════════════════════════════════════════════
+             TEST SCOPE
+        ════════════════════════════════════════════════════ -->
+
+        <!-- Spring Boot Test (JUnit 5 + Mockito + AssertJ) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <!--
+                Brings in:
+                  - JUnit Jupiter 5.x
+                  - Mockito 5.x
+                  - AssertJ
+                  - Hamcrest
+                  - JSONassert
+                  - JsonPath
+            -->
+        </dependency>
+
+        <!-- Reactor Test (StepVerifier, TestPublisher) -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+            <!-- version managed by spring-boot-starter-parent -->
+        </dependency>
+
+        <!-- Spring Security Test -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+            <!-- version managed by spring-boot-starter-parent -->
+        </dependency>
+
+        <!-- WireMock — HTTP stub server for integration tests -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.9.2</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <!-- =========================================================
+         Build
+    ========================================================== -->
+    <build>
+        <plugins>
+
+            <!-- ── Spring Boot Maven Plugin ── -->
+            <!--
+                - Produces a fully executable fat JAR.
+                - Enables layered JARs for optimized Docker image caching.
+                - Excludes spring-boot-configuration-processor from fat JAR.
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <layers>
+                        <enabled>true</enabled>
+                    </layers>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-configuration-processor</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!-- ── Maven Compiler Plugin (Java 21) ── -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <!-- version managed by spring-boot-starter-parent -->
+                <configuration>
+                    <release>21</release>
+                    <compilerArgs>
+                        <!--
+                            Targeted lint flags — warn on genuinely dangerous
+                            patterns without failing the build on harmless notes.
+
+                            Intentionally NOT included:
+                              -Xlint:all   — too broad; breaks on annotation
+                                             processor notes, missing
+                                             serialVersionUID, etc.
+                              -Werror      — promotes ALL warnings (including
+                                             trivial ones) to hard errors,
+                                             causing failures like the one seen
+                                             in JwtVerificationException.java.
+                                             Re-enable only after all third-party
+                                             libraries in your classpath produce
+                                             zero warnings themselves.
+                        -->
+                        <!-- Warn on unchecked generic casts (e.g. raw types) -->
+                        <arg>-Xlint:unchecked</arg>
+                        <!-- Warn on use of deprecated APIs -->
+                        <arg>-Xlint:deprecation</arg>
+                        <!-- Warn on fall-through in switch statements -->
+                        <arg>-Xlint:fallthrough</arg>
+                        <!-- Suppress annotation-processor informational notes -->
+                        <arg>-Xlint:-processing</arg>
+                    </compilerArgs>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-configuration-processor</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- ── Maven Enforcer Plugin ── -->
+            <!--
+                Enforces:
+                  - Minimum Maven version (3.9+)
+                  - Minimum Java version (21)
+                  - No duplicate dependencies in classpath
+                  - Dependency convergence (no conflicting transitive versions)
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven-enforcer-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>enforce-rules</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.9.0,)</version>
+                                    <message>Maven 3.9.0 or higher is required.</message>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[21,)</version>
+                                    <message>Java 21 or higher is required.</message>
+                                </requireJavaVersion>
+                                <banDuplicatePomDependencyVersions/>
+                                <dependencyConvergence/>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ── Surefire Plugin (Unit Tests) ── -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <!-- Required for Mockito + Java 21 strong encapsulation -->
+                    <argLine>
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                        -XX:+EnableDynamicAgentLoading
+                    </argLine>
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*Spec.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+
+            <!-- ── Failsafe Plugin (Integration Tests) ── -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationTest.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+
+            <!-- ── JaCoCo Code Coverage ── -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <!-- Enforce minimum 80% line coverage -->
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                        <!-- Enforce minimum 75% branch coverage -->
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.75</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ── OWASP Dependency-Check (CVE Scanning) ── -->
+            <!--
+                Run manually: mvn dependency-check:check
+                Fails build if any dependency has a CVSS score >= 7.0 (high).
+                Bind to verify phase in CI pipelines.
+            -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>${owasp-dependency-check.version}</version>
+                <configuration>
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <suppressionFiles>
+                        <suppressionFile>owasp-suppressions.xml</suppressionFile>
+                    </suppressionFiles>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ── Jib Plugin (Docker Image Build — no Docker daemon needed) ── -->
+            <!--
+                Build image: mvn jib:build  (push to registry)
+                Local load:  mvn jib:dockerBuild
+                Uses distroless Java 21 base — minimal attack surface, no shell.
+            -->
+            <plugin>
+                <groupId>com.google.cloud.tools</groupId>
+                <artifactId>jib-maven-plugin</artifactId>
+                <version>${jib-plugin.version}</version>
+                <configuration>
+                    <from>
+                        <!-- Distroless: no shell, no package manager — smallest attack surface -->
+                        <image>gcr.io/distroless/java21-debian12:nonroot</image>
+                    </from>
+                    <to>
+                        <image>yourorg/api-gateway:${project.version}</image>
+                    </to>
+                    <container>
+                        <ports>
+                            <port>8080</port>
+                        </ports>
+                        <jvmFlags>
+                            <!-- Java 21 virtual threads friendly GC -->
+                            <jvmFlag>-XX:+UseZGC</jvmFlag>
+                            <jvmFlag>-XX:+ZGenerational</jvmFlag>
+                            <jvmFlag>-Xms256m</jvmFlag>
+                            <jvmFlag>-Xmx512m</jvmFlag>
+                            <!-- Container-aware heap sizing -->
+                            <jvmFlag>-XX:+UseContainerSupport</jvmFlag>
+                            <jvmFlag>-XX:MaxRAMPercentage=75.0</jvmFlag>
+                            <!-- Reactor + virtual thread tuning -->
+                            <jvmFlag>-Dreactor.netty.ioWorkerCount=4</jvmFlag>
+                            <jvmFlag>-Dspring.profiles.active=prod</jvmFlag>
+                        </jvmFlags>
+                        <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+                        <user>nonroot:nonroot</user>
+                    </container>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+    <!-- =========================================================
+         Profiles
+    ========================================================== -->
+    <profiles>
+        <!-- DEV Profile -->
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources/profile/dev</directory>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+
+        <!-- PROD Profile -->
+        <profile>
+            <id>prod</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources/profile/prod</directory>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

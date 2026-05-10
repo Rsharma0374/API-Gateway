@@ -49,14 +49,18 @@ spring:
           predicates:
             - Path=/doc-service/**
 
+auth:
+  jwt:
+    jwks-url: ${AUTH_JWT_JWKS_URL:https://prod-idp.example.com/.well-known/jwks.json}
+    issuer: ${AUTH_JWT_ISSUER:https://prod-idp.example.com/}
+    audience: ${AUTH_JWT_AUDIENCE:api-gateway-prod}
+
 logging:
   level:
     org.springframework.cloud.gateway: WARN
     org.springframework.http.server.reactive: WARN
     root: WARN
     in.guardianservices.api_gateway: WARN
-
-
 
 management:
   endpoints:
