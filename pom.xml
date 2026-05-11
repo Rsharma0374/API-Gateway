@@ -9,7 +9,7 @@
     <!-- =========================================================
          Project Coordinates
     ========================================================== -->
-    <groupId>com.yourorg</groupId>
+    <groupId>in.guardianservices</groupId>
     <artifactId>api-gateway</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
@@ -43,7 +43,8 @@
         <!-- Dependency Versions (not managed by Spring Boot BOM) -->
         <nimbus-jose-jwt.version>9.37.3</nimbus-jose-jwt.version>
         <bucket4j.version>8.10.0</bucket4j.version>
-        <resilience4j.version>2.3.0</resilience4j.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
+        <spring-cloud.version>2025.0.1</spring-cloud.version>
 
         <!-- Plugin Versions -->
         <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
@@ -53,6 +54,21 @@
         <jacoco-plugin.version>0.8.12</jacoco-plugin.version>
         <jib-plugin.version>3.4.3</jib-plugin.version>
     </properties>
+
+    <!-- ═══════════════════════════════════════════════════
+         BOM for Spring Cloud (Manages versions for all Spring Cloud modules)
+    ════════════════════════════════════════════════════ -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <!-- =========================================================
          Dependencies
@@ -84,6 +100,26 @@
             -->
         </dependency>
 
+        <!-- Spring Cloud Gateway (includes RouteLocator) -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway</artifactId>
+        </dependency>
+
+        <!-- Spring Cloud LoadBalancer (required for lb:// resolution) -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
+        </dependency>
         <!-- ── JWT: Nimbus JOSE + JWT ── -->
         <!--
             Preferred over jjwt for full JWKS (JWK Set) support,
@@ -130,22 +166,17 @@
             <version>${resilience4j.version}</version>
         </dependency>
 
+        <!-- Add this explicitly - it's the missing piece -->
         <dependency>
             <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-reactor</artifactId>
+            <artifactId>resilience4j-spring6</artifactId>
             <version>${resilience4j.version}</version>
         </dependency>
 
-        <!--
-            resilience4j-rxjava3 — REQUIRED even if RxJava3 is not used directly.
-            resilience4j-spring-boot3 2.x auto-configuration unconditionally
-            references RxJava3OnClasspathCondition at context startup.
-            Without this dependency the application fails to start with:
-              ClassNotFoundException: ...spring6.utils.RxJava3OnClasspathCondition
-        -->
+        <!-- And keep this one -->
         <dependency>
             <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-rxjava3</artifactId>
+            <artifactId>resilience4j-reactor</artifactId>
             <version>${resilience4j.version}</version>
         </dependency>
 

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- ─── Properties ──────────────────────────────────────────────────────── -->
+
+    <property name="LOG_DIR"          value="logs" />
+    <property name="ACTIVE_LOG_FILE"  value="apiGateway" />
+    <property name="ARCHIVE_PATTERN"  value="apiGateway-%d{dd-MM-yyyy}" />
+    <property name="MAX_HISTORY"      value="30" />   <!-- keep 30 days of archives -->
+    <property name="MAX_FILE_SIZE"    value="50MB" />  <!-- safety cap per file      -->
+    <property name="TOTAL_SIZE_CAP"   value="1GB" />   <!-- total disk cap           -->
+
+    <!-- ─── Patterns ────────────────────────────────────────────────────────── -->
+
+    <!--
+        Console pattern  — coloured for local dev
+        File pattern     — plain text (no ANSI codes in log files)
+    -->
+    <property name="CONSOLE_PATTERN"
+              value="%cyan(%d{yyyy-MM-dd HH:mm:ss.SSS}) %highlight(%-5level) [%thread] %yellow(%logger{36}) - %msg%n" />
+
+    <property name="FILE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n" />
+
+    <!-- ─── Console Appender ─────────────────────────────────────────────────── -->
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ─── Rolling File Appender ───────────────────────────────────────────── -->
+    <!--
+        Active file  : logs/apiGateway.log
+        Archived file: logs/apiGateway-dd-MM-yyyy.log.gz  (previous days, gzipped)
+
+        TimeBasedRollingPolicy rolls over at midnight every day.
+        fileNamePattern controls BOTH the archive name AND the compression format
+        (.gz = gzip automatically applied to rolled files).
+    -->
+
+    <appender name="ROLLING_FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+
+        <!-- Active log file — always this name while the day is current -->
+        <file>${LOG_DIR}/${ACTIVE_LOG_FILE}.log</file>
+
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+            <!--
+                Archive name pattern.
+                %d{dd-MM-yyyy} rolls daily.
+                %i is required by SizeAndTimeBasedRollingPolicy (index within one day).
+                .gz compresses archived files automatically.
+            -->
+            <fileNamePattern>
+                ${LOG_DIR}/${ARCHIVE_PATTERN}.%i.log.gz
+            </fileNamePattern>
+
+            <!-- Max size of a single active file before intra-day roll -->
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+
+            <!-- How many days of archives to keep -->
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+
+            <!-- Total size of all archives combined -->
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+
+            <!--
+                cleanHistoryOnStart: delete expired archives on startup.
+                Useful when the app was stopped for a long time and old
+                files accumulated.
+            -->
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+    </appender>
+
+    <!-- ─── Async Wrapper ────────────────────────────────────────────────────── -->
+    <!--
+        Wraps ROLLING_FILE in an async appender.
+        File I/O happens on a background thread — critical for a reactive gateway
+        where blocking the event loop even briefly causes latency spikes.
+        queueSize 512 handles burst traffic without dropping log events.
+    -->
+
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="ROLLING_FILE" />
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>  <!-- never discard, even when queue is 80% full -->
+        <includeCallerData>false</includeCallerData>   <!-- keep it fast; set true only for debugging  -->
+        <neverBlock>false</neverBlock>
+    </appender>
+
+    <!-- ─── Logger Levels ────────────────────────────────────────────────────── -->
+
+    <!-- Gateway internals -->
+    <logger name="in.guardianservices.api_gateway"               level="DEBUG" />
+    <logger name="org.springframework.cloud.gateway"             level="INFO"  />
+
+    <!-- Eureka — WARN to suppress the noisy heartbeat logs -->
+    <logger name="com.netflix.discovery"                         level="WARN"  />
+    <logger name="com.netflix.eureka"                            level="WARN"  />
+
+    <!-- Resilience4j circuit breaker events -->
+    <logger name="io.github.resilience4j"                        level="INFO"  />
+
+    <!-- Netty / Reactor — suppress verbose internal logs -->
+    <logger name="reactor.netty"                                 level="WARN"  />
+    <logger name="io.netty"                                      level="WARN"  />
+
+    <!-- WebClient request/response — set DEBUG only when tracing a specific issue -->
+    <logger name="org.springframework.web.reactive.function.client" level="INFO" />
+
+    <!-- Spring framework noise -->
+    <logger name="org.springframework"                           level="INFO"  />
+
+    <!-- ─── Root Logger ──────────────────────────────────────────────────────── -->
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"    />
+        <appender-ref ref="ASYNC_FILE" />
+    </root>
+
+</configuration>

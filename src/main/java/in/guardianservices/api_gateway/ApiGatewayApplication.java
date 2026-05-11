@@ -1,24 +1,21 @@
+// src/main/java/com/yourorg/gateway/GatewayApplication.java
 package in.guardianservices.api_gateway;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
-
 import java.time.Clock;
 
 @SpringBootApplication
+@EnableDiscoveryClient
 public class ApiGatewayApplication {
-	private static final Logger log = LoggerFactory.getLogger(ApiGatewayApplication.class);
 
 	public static void main(String[] args) {
-		log.info("Starting ApiGatewayApplication...");
 		SpringApplication.run(ApiGatewayApplication.class, args);
-		log.info("ApiGatewayApplication started successfully");
 	}
 
 	/**
@@ -29,7 +26,6 @@ public class ApiGatewayApplication {
 	 */
 	@Bean
 	public WebClient webClient() {
-		log.info("Initializing WebClient bean");
 		return WebClient.builder()
 				.defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
 				.codecs(configurer ->
@@ -54,8 +50,6 @@ public class ApiGatewayApplication {
 	 */
 	@Bean
 	public Clock clock() {
-		log.info("Initializing System UTC Clock bean");
 		return Clock.systemUTC();
 	}
-
 }

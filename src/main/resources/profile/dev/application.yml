@@ -51,30 +51,22 @@ server:
 spring:
   application:
     name: api-gateway
-# ──────────────────────────────────────────────────────────────
-# Spring Security — Reactive Security Auto-Configuration
-# ──────────────────────────────────────────────────────────────
-  security:
-    # Disable the default generated password log line in dev
-    user:
-      name: dev
-      password: "{noop}dev-only-not-for-production"
-      roles: ADMIN
-
   # Active profiles — overridden by SPRING_PROFILES_ACTIVE env var
   profiles:
     active: dev
-
   # Lifecycle: allow in-flight reactive requests to finish during shutdown
   lifecycle:
     timeout-per-shutdown-phase: 30s
-
-  # Reactor Netty access log (separate from application log)
-  reactor:
-    netty:
-      http:
-        server:
-          access-log-enabled: false   # we use RequestLoggingFilter instead
+  # ──────────────────────────────────────────────────────────────
+  # Virtual Threads (Java 21)
+  # ──────────────────────────────────────────────────────────────
+  # Spring Boot 3.2+ supports virtual threads for blocking operations.
+  # In a WebFlux gateway the Netty event loop is non-blocking, so virtual
+  # threads primarily benefit @Async tasks, Spring Security crypto, and
+  # the boundedElastic scheduler used by JwtVerifier / JwksCache.
+  threads:
+    virtual:
+      enabled: true
 
   # Jackson — global JSON serialisation defaults
   jackson:
@@ -86,8 +78,50 @@ spring:
       fail-on-unknown-properties: false     # forward-compatible with new fields
 
   # Codec limits — prevent memory exhaustion from large request/response bodies
-  codec:
-    max-in-memory-size: 1MB
+  http:
+    codecs:
+      max-in-memory-size: 1MB
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # One route covers ALL doc-service endpoints
+            - id: doc-service
+              uri: lb://doc-service
+              predicates:
+                - Path=/doc-service/**
+              filters:
+                - AddRequestHeader=X-Gateway-Source, api-gateway
+                - name: CircuitBreaker
+                  args:
+                    name: docServiceCB
+                    fallbackUri: forward:/fallback/doc-service
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                          allowedOrigins: "*"
+                          allowedMethods: [ "GET","POST","PUT","DELETE","PATCH","OPTIONS" ]
+                          allowedHeaders: "*"
+  # ──────────────────────────────────────────────────────────────
+  # Spring Security — Reactive Security Auto-Configuration
+  # ──────────────────────────────────────────────────────────────
+  security:
+    # Disable the default generated password log line in dev
+    user:
+      name: dev
+      password: "{noop}dev-only-not-for-production"
+      roles: ADMIN
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka.guardianservices.in:8761/eureka/
 
 # ──────────────────────────────────────────────────────────────
 # Authentication & JWT
@@ -220,7 +254,7 @@ management:
 
     # Allow runtime log-level changes via POST /actuator/loggers/{name}
     loggers:
-      enabled: true
+      access: read_only
 
   # Micrometer metrics tags applied to every metric
   metrics:
@@ -281,14 +315,3 @@ logging:
       max-file-size: 50MB
       max-history: 7       # keep 7 days of rolled logs
       clean-history-on-start: false
-
-  # ──────────────────────────────────────────────────────────────
-  # Virtual Threads (Java 21)
-  # ──────────────────────────────────────────────────────────────
-  # Spring Boot 3.2+ supports virtual threads for blocking operations.
-  # In a WebFlux gateway the Netty event loop is non-blocking, so virtual
-  # threads primarily benefit @Async tasks, Spring Security crypto, and
-  # the boundedElastic scheduler used by JwtVerifier / JwksCache.
-  threads:
-    virtual:
-      enabled: true

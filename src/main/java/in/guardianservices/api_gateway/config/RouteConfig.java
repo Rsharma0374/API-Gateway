@@ -11,320 +11,366 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.RouterFunctions;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
+import reactor.util.context.ContextView;
+
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
-import static org.springframework.web.reactive.function.server.RequestPredicates.GET;
-import static org.springframework.web.reactive.function.server.RequestPredicates.POST;
+import java.util.Set;
+
+import static org.springframework.web.reactive.function.server.RequestPredicates.*;
+
 /**
- * Functional route configuration for the API Gateway.
+ * RouteConfig
  *
- * <p>Defines all internal gateway routes using Spring WebFlux's functional
- * router DSL ({@link RouterFunctions}).  Each route is a pure function —
- * no annotations, no controller classes — making them easy to test, compose,
- * and reason about.
+ * Functional-style API Gateway routing using WebClient + RouterFunction.
  *
- * <h3>Routes defined</h3>
- * <ul>
- *   <li>{@code GET  /health}          — liveness probe (public)</li>
- *   <li>{@code GET  /actuator/**}     — Spring Boot Actuator (restricted in prod
- *                                       to internal network via firewall/ingress)</li>
- *   <li>{@code GET  /fallback/**}     — circuit-breaker fallback endpoint (public)</li>
- *   <li>{@code GET  /public/**}       — publicly accessible resources (public)</li>
- *   <li>{@code GET  /api/**}          — authenticated API routes (JWT required)</li>
- *   <li>{@code POST /api/**}          — authenticated API routes (JWT required)</li>
- * </ul>
+ * Architecture:
+ *   Client → Gateway (10008) → Eureka/Consul → doc-service (10005)
  *
- * <h3>Circuit breaker</h3>
- * The {@code /api/**} routes are wrapped in a Resilience4j
- * {@link CircuitBreaker} named {@code "downstreamService"}.  When the
- * downstream service is unavailable (circuit open), requests are
- * automatically redirected to the {@code /fallback/**} endpoint.
+ * Path forwarding:
+ *   Gateway receives:  POST /doc-service/pdf/unlock
+ *   Resolved target:   http://<doc-service-ip>:10005/doc-service/pdf/unlock
+ *   (full path preserved — doc-service runs with context-path=/doc-service)
  *
- * <h3>Claims propagation</h3>
- * Route handlers for authenticated paths read the verified
- * {@link JWTClaimsSet} from the Reactor Context (set by
- * {@link JwtVerificationFilter}) to extract the authenticated subject
- * for logging and downstream header propagation.
- *
- * <h3>Why functional routes over {@code @Controller}?</h3>
- * <ul>
- *   <li>No reflection — fully compatible with GraalVM native image.</li>
- *   <li>Composable and testable without starting a full Spring context.</li>
- *   <li>Explicit request matching — no ambiguous path variable collisions.</li>
- *   <li>Fine-grained error handling per route via {@code onErrorResume}.</li>
- * </ul>
+ * Adding a new downstream service:
+ *   1. Add its lb:// constant below (SERVICE REGISTRY section)
+ *   2. Add its routes in gatewayRouterFunction() (ROUTES section)
+ *   That's it — circuit breaker, JWT propagation, logging are all automatic.
  */
 @Configuration
 public class RouteConfig {
+
     private static final Logger log = LoggerFactory.getLogger(RouteConfig.class);
-    /** Name of the circuit breaker protecting downstream API calls. */
-    private static final String DOWNSTREAM_CB_NAME = "downstreamService";
+
+    // ── Headers ───────────────────────────────────────────────────────────────
+
+    private static final String HEADER_SUBJECT    = "X-Authenticated-Subject";
+    private static final String HEADER_REQUEST_ID = RequestIdFilter.REQUEST_ID_HEADER;
+
     /**
-     * Header forwarded to downstream services identifying the authenticated caller.
-     * Downstream services trust this header only because the gateway has already
-     * verified the JWT — never accept this header from untrusted sources.
+     * Headers that must never be forwarded to downstream services.
+     * Authorization is stripped — downstream services trust X-Authenticated-Subject
+     * which is set by this gateway after JWT verification.
      */
-    private static final String DOWNSTREAM_SUBJECT_HEADER = "X-Authenticated-Subject";
+    private static final Set<String> BLOCKED_HEADERS = Set.of(
+            "authorization",
+            "cookie",
+            "set-cookie",
+            "host",
+            "connection",
+            "transfer-encoding"
+    );
+
+    // ── Service Registry ──────────────────────────────────────────────────────
+    // lb:// prefix → Spring Cloud LoadBalancer resolves via Eureka/Consul.
+    // Value must match spring.application.name of the target service.
+
+    private static final String DOC_SERVICE = "lb://doc-service";
+
+    // Add more services here as your system grows:
+    // private static final String USER_SERVICE    = "lb://user-service";
+    // private static final String PAYMENT_SERVICE = "lb://payment-service";
+
+    // ── Circuit Breaker ───────────────────────────────────────────────────────
+
+    private static final String CB_NAME = "downstreamService";
+
     // ─────────────────────────────────────────────────────────────────────────
-    // Router
+    // Beans
     // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Composes all gateway routes into a single {@link RouterFunction}.
+     * Load-balanced WebClient shared across all proxy calls.
+     * ReactorLoadBalancerExchangeFilterFunction resolves lb:// URIs via the registry.
+     */
+    @Bean
+    public WebClient lbWebClient(
+            WebClient.Builder builder,
+            org.springframework.cloud.client.loadbalancer.reactive.ReactorLoadBalancerExchangeFilterFunction lbFunction) {
+        return builder
+                .filter(lbFunction)
+                .build();
+    }
+
+    /**
+     * All gateway routes.
      *
-     * <p>Route matching is evaluated in declaration order — the first match wins.
-     * More specific paths (e.g. {@code /health}) are declared before wildcards
-     * (e.g. {@code /api/**}) to prevent shadowing.
-     *
-     * @param cbRegistry Resilience4j circuit-breaker registry — auto-configured
-     *                   by the {@code resilience4j-spring-boot3} starter.
-     * @return the composed router function for the entire gateway
+     * Matching order (first match wins — order matters):
+     *   1. Internal routes  → /health, /fallback/**, /public/**
+     *   2. Service routes   → /doc-service/**, /user-service/**, ...
+     *   3. Catch-all        → 404
      */
     @Bean
     public RouterFunction<ServerResponse> gatewayRouterFunction(
+            WebClient lbWebClient,
             CircuitBreakerRegistry cbRegistry) {
-        log.info("Initializing gatewayRouterFunction bean");
-        CircuitBreaker downstreamCb = buildDownstreamCircuitBreaker(cbRegistry);
+
+        CircuitBreaker cb = buildCircuitBreaker(cbRegistry);
+
         return RouterFunctions
-                // ── Public routes (no JWT required) ──────────────────────────
-                .route(GET("/health"),
-                        req -> handleHealth(req))
+
+                // ── Internal routes (no JWT, no proxy) ───────────────────────
+                .route(GET("/health"),          req -> handleHealth(req))
+                .andRoute(GET("/fallback/**"),  req -> handleFallback(req))
+                .andRoute(GET("/public/**"),    req -> handlePublic(req))
+
+                // ── doc-service routes ────────────────────────────────────────
+                // One wildcard per HTTP method covers every endpoint in HomeController.
+                // context-path /doc-service is preserved — no path rewriting needed.
                 .andRoute(GET("/doc-service/**"),
-                        request -> forwardToService("http://localhost:10005", "/doc-service/welcome"))
-                .andRoute(GET("/fallback/**"),
-                        req -> handleFallback(req))
-                .andRoute(GET("/public/**"),
-                        req -> handlePublic(req))
-                // ── Authenticated API routes ───────────────────────────────────
-                // These routes run AFTER the JwtVerificationFilter has already
-                // verified the token and placed claims in the Reactor Context.
-                // Handlers can safely read claims without re-verifying anything.
-                .andRoute(GET("/api/**"),
-                        req -> handleApiRequest(req, downstreamCb))
-                .andRoute(POST("/api/**"),
-                        req -> handleApiRequest(req, downstreamCb))
-                // ── Catch-all: 404 for unmatched routes ───────────────────────
-                .andRoute(req -> true,
-                        req -> handleNotFound(req));
+                        req -> proxy(req, DOC_SERVICE, lbWebClient, cb))
+                .andRoute(POST("/doc-service/**"),
+                        req -> proxy(req, DOC_SERVICE, lbWebClient, cb))
+                .andRoute(PUT("/doc-service/**"),
+                        req -> proxy(req, DOC_SERVICE, lbWebClient, cb))
+                .andRoute(DELETE("/doc-service/**"),
+                        req -> proxy(req, DOC_SERVICE, lbWebClient, cb))
+
+                // ── Add new services here ─────────────────────────────────────
+                // .andRoute(GET("/user-service/**"),
+                //         req -> proxy(req, USER_SERVICE, lbWebClient, cb))
+                // .andRoute(POST("/user-service/**"),
+                //         req -> proxy(req, USER_SERVICE, lbWebClient, cb))
+
+                // ── Catch-all 404 ─────────────────────────────────────────────
+                .andRoute(req -> true, req -> handleNotFound(req));
     }
 
-    private Mono<ServerResponse> forwardToService(String baseUrl, String path) {
-        return WebClient.create(baseUrl)
-                .get()
-                .uri(path)
-                .retrieve()
-                .bodyToMono(String.class)
-                .flatMap(body -> ServerResponse.ok().bodyValue(body));
-    }
     // ─────────────────────────────────────────────────────────────────────────
-    // Route handlers
+    // Core Proxy
     // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Liveness probe endpoint.
+     * Proxies the incoming request to the downstream service.
      *
-     * <p>Returns {@code 200 OK} with a JSON body indicating the gateway is alive.
-     * Used by Kubernetes {@code livenessProbe} — must never require authentication
-     * and must respond within 1 second even under load.
-     *
-     * <p>This route is registered in {@code gateway.public-paths} in
-     * {@code application.yml} so the JWT filter skips it automatically.
+     * Steps:
+     *   1. Read requestId + authenticated subject from Reactor Context
+     *   2. Build target URL: serviceBase + fullPath + queryString
+     *   3. Forward safe headers + inject X-Authenticated-Subject, X-Request-ID
+     *   4. Stream request body (for POST/PUT/PATCH) or send bodyless (GET/DELETE)
+     *   5. Map downstream response status + body back to the caller
+     *   6. Apply circuit breaker
+     *   7. On 4xx/5xx → return downstream error as-is (not a fallback)
+     *   8. On network/CB failure → redirect to /fallback/<path>
      */
-    private Mono<ServerResponse> handleHealth(ServerRequest request) {
-        return Mono.deferContextual(ctx -> {
-            String requestId = ctx.getOrDefault(
-                    RequestIdFilter.REQUEST_ID_CONTEXT_KEY, "none");
-            log.info("Handling health check request — requestId={}", requestId);
-            log.debug("Health check — requestId={}", requestId);
-            String body = String.format("""
-                    {
-                      "status":    "UP",
-                      "timestamp": "%s",
-                      "requestId": "%s"
-                    }
-                    """, Instant.now(), requestId);
-            return ServerResponse.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(body);
-        });
-    }
-    /**
-     * Circuit-breaker fallback endpoint.
-     *
-     * <p>Serves a degraded-mode response when the downstream service is
-     * unavailable (circuit open).  Returns {@code 503 Service Unavailable}
-     * with an RFC 7807 Problem+JSON body so clients know to retry later.
-     *
-     * <p>The path suffix after {@code /fallback/} is used to identify which
-     * downstream route triggered the fallback — useful for targeted alerting.
-     */
-    private Mono<ServerResponse> handleFallback(ServerRequest request) {
-        return Mono.deferContextual(ctx -> {
-            String requestId = ctx.getOrDefault(
-                    RequestIdFilter.REQUEST_ID_CONTEXT_KEY, "none");
-            String triggeredBy = request.path().replaceFirst("^/fallback", "");
-            log.info("Handling fallback request — triggeredBy={} requestId={}", triggeredBy, requestId);
-            log.warn("Fallback triggered — triggeredBy={} requestId={}",
-                    triggeredBy, requestId);
-            String body = String.format("""
-                    {
-                      "type":       "https://httpstatuses.com/503",
-                      "title":      "Service Unavailable",
-                      "status":     503,
-                      "detail":     "The requested service is temporarily unavailable. Please retry shortly.",
-                      "triggeredBy": "%s",
-                      "requestId":  "%s"
-                    }
-                    """, triggeredBy, requestId);
-            return ServerResponse
-                    .status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                    .bodyValue(body);
-        });
-    }
-    /**
-     * Public resource endpoint.
-     *
-     * <p>Serves resources that are intentionally accessible without
-     * authentication (e.g. API documentation, OpenAPI spec, login pages).
-     * Extend this handler to proxy to a dedicated public-content service.
-     */
-    private Mono<ServerResponse> handlePublic(ServerRequest request) {
-        return Mono.deferContextual(ctx -> {
-            String requestId = ctx.getOrDefault(
-                    RequestIdFilter.REQUEST_ID_CONTEXT_KEY, "none");
-            String resourcePath = request.path();
-            log.info("Handling public resource request — path={} requestId={}", resourcePath, requestId);
-            log.debug("Public resource request — path={} requestId={}",
-                    resourcePath, requestId);
-            String body = String.format("""
-                    {
-                      "path":      "%s",
-                      "requestId": "%s",
-                      "message":   "Public resource served successfully."
-                    }
-                    """, resourcePath, requestId);
-            return ServerResponse.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(body);
-        });
-    }
-    /**
-     * Authenticated API route handler.
-     *
-     * <p>This handler is only reached after {@link JwtVerificationFilter} has
-     * successfully verified the JWT and written the {@link JWTClaimsSet} into
-     * the Reactor Context.  It is safe to read and trust the claims here.
-     *
-     * <p>Responsibilities:
-     * <ol>
-     *   <li>Read the authenticated subject from the Reactor Context.</li>
-     *   <li>Forward the subject to the downstream service via the
-     *       {@value #DOWNSTREAM_SUBJECT_HEADER} header.</li>
-     *   <li>Apply the circuit breaker — redirect to {@code /fallback/**}
-     *       when the downstream service is unavailable.</li>
-     *   <li>Return the downstream response to the client.</li>
-     * </ol>
-     *
-     * <p>In a real implementation, replace the stub response body with an
-     * actual {@link org.springframework.web.reactive.function.client.WebClient}
-     * call to the target microservice, forwarding the validated subject header.
-     *
-     * @param request      the incoming authenticated server request
-     * @param circuitBreaker the circuit breaker protecting the downstream call
-     */
-    private Mono<ServerResponse> handleApiRequest(
+    private Mono<ServerResponse> proxy(
             ServerRequest request,
+            String serviceBase,
+            WebClient webClient,
             CircuitBreaker circuitBreaker) {
+
         return Mono.deferContextual(ctx -> {
-            String requestId = ctx.getOrDefault(
-                    RequestIdFilter.REQUEST_ID_CONTEXT_KEY, "none");
+
+            String requestId = resolveRequestId(ctx);
             String subject   = resolveSubject(ctx);
-            String path      = request.path();
-            String method    = request.method().name();
-            log.info("API request handling started — method={} path={} subject={} requestId={}",
-                    method, path, subject, requestId);
-            // ── Downstream call stub (replace with real WebClient proxy) ──────
-            // In production this would be:
-            //   webClient.method(request.method())
-            //       .uri(downstreamBaseUrl + path)
-            //       .header(DOWNSTREAM_SUBJECT_HEADER, subject)
-            //       .header(RequestIdFilter.REQUEST_ID_HEADER, requestId)
-            //       .retrieve()
-            //       .bodyToMono(String.class)
-            //       .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
-            //       .onErrorResume(ex -> fallbackResponse(request, ex));
-            Mono<ServerResponse> downstreamCall = buildStubResponse(
-                    path, method, subject, requestId);
-            // Apply circuit breaker — when open, errors trigger fallback.
-            return downstreamCall
+            String path      = request.uri().getRawPath();
+            String query     = request.uri().getRawQuery();
+            String targetUrl = serviceBase + path + (query != null ? "?" + query : "");
+
+            log.info("PROXY method={} path={} target={} subject={} requestId={}",
+                    request.method(), path, targetUrl, subject, requestId);
+
+            // Build the outgoing request
+            WebClient.RequestBodySpec outbound = webClient
+                    .method(request.method())
+                    .uri(targetUrl)
+                    .header(HEADER_SUBJECT,    subject)
+                    .header(HEADER_REQUEST_ID, requestId)
+                    .headers(h -> request.headers().asHttpHeaders().forEach((name, values) -> {
+                        if (isSafeHeader(name)) {
+                            h.put(name, values);
+                        }
+                    }));
+
+            // Attach body for write methods; leave bodyless for read methods
+            Mono<ServerResponse> downstream = isReadMethod(request.method())
+                    ? sendBodyless(outbound)
+                    : sendWithBody(outbound, request);
+
+            return downstream
                     .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
+                    .onErrorResume(DownstreamClientException.class, ex -> {
+                        // 4xx/5xx from downstream — return it directly to the caller
+                        log.warn("Downstream error status={} path={} requestId={}",
+                                ex.statusCode, path, requestId);
+                        return ServerResponse
+                                .status(ex.statusCode)
+                                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                                .bodyValue(ex.body != null ? ex.body : "");
+                    })
                     .onErrorResume(ex -> {
-                        log.warn("Circuit breaker triggered — redirecting to fallback. "
-                                        + "path={} subject={} requestId={} error={}",
-                                path, subject, requestId, ex.getMessage());
-                        return redirectToFallback(request, path, requestId);
+                        // Network failure, timeout, circuit breaker open
+                        log.error("Proxy failure path={} error={} requestId={}",
+                                path, ex.getMessage(), requestId, ex);
+                        return redirectToFallback(path);
                     });
         });
     }
+
     /**
-     * Catch-all handler for routes that do not match any registered pattern.
-     * Returns {@code 404 Not Found} with an RFC 7807 Problem+JSON body.
+     * Sends a GET / DELETE / HEAD request (no body).
      */
-    private Mono<ServerResponse> handleNotFound(ServerRequest request) {
-        return Mono.deferContextual(ctx -> {
-            String requestId = ctx.getOrDefault(
-                    RequestIdFilter.REQUEST_ID_CONTEXT_KEY, "none");
-            String path = request.path();
-            log.info("Handling not found request — path={} method={} requestId={}", path, request.method().name(), requestId);
-            log.warn("No route matched — path={} method={} requestId={}",
-                    path, request.method().name(), requestId);
-            String body = String.format("""
-                    {
-                      "type":      "https://httpstatuses.com/404",
-                      "title":     "Not Found",
-                      "status":    404,
-                      "detail":    "No route found for path '%s'.",
-                      "requestId": "%s"
+    private Mono<ServerResponse> sendBodyless(WebClient.RequestBodySpec spec) {
+        return spec
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(
+                                        new DownstreamClientException(
+                                                response.statusCode().value(), body)))
+                )
+                .toEntityFlux(byte[].class)
+                .flatMap(entity -> {
+                    ServerResponse.BodyBuilder builder =
+                            ServerResponse.status(entity.getStatusCode());
+
+                    if (entity.getHeaders().getContentType() != null) {
+                        builder.contentType(entity.getHeaders().getContentType());
                     }
-                    """, path, requestId);
-            return ServerResponse
-                    .status(HttpStatus.NOT_FOUND)
-                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                    .bodyValue(body);
-        });
+
+                    return entity.getBody() != null
+                            ? builder.body(entity.getBody(), byte[].class)
+                            : builder.build();
+                });
     }
-    // ─────────────────────────────────────────────────────────────────────────
-    // Circuit breaker
-    // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Builds and registers the Resilience4j circuit breaker that protects
-     * downstream API calls.
-     *
-     * <p>Configuration:
-     * <ul>
-     *   <li>Opens after 50% failure rate in a 10-call sliding window.</li>
-     *   <li>Stays open for 30 seconds before entering HALF_OPEN state.</li>
-     *   <li>Allows 5 test calls in HALF_OPEN before deciding to close or re-open.</li>
-     *   <li>Counts calls slower than 2 seconds as failures (slow-call threshold).</li>
-     * </ul>
-     *
-     * @param registry the Resilience4j registry — auto-configured by the starter
-     * @return a fully configured {@link CircuitBreaker}
+     * Sends a POST / PUT / PATCH request — streams the request body through.
+     * Uses byte[] to handle any content type: JSON, multipart, PDF, ZIP, etc.
      */
-    private CircuitBreaker buildDownstreamCircuitBreaker(CircuitBreakerRegistry registry) {
-        log.info("Building downstream circuit breaker");
+    private Mono<ServerResponse> sendWithBody(
+            WebClient.RequestBodySpec spec,
+            ServerRequest request) {
+
+        return spec
+                .contentType(request.headers().contentType()
+                        .orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(BodyInserters.fromDataBuffers(request.exchange().getRequest().getBody()))
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(
+                                        new DownstreamClientException(
+                                                response.statusCode().value(), body)))
+                )
+                .toEntityFlux(byte[].class)
+                .flatMap(entity -> {
+                    ServerResponse.BodyBuilder builder =
+                            ServerResponse.status(entity.getStatusCode());
+
+                    if (entity.getHeaders().getContentType() != null) {
+                        builder.contentType(entity.getHeaders().getContentType());
+                    }
+
+                    // Forward custom response headers from downstream (Content-Disposition,
+                    // X-Compression-Ratio, X-Merged-Files-Count, etc.)
+                    entity.getHeaders().forEach((name, values) -> {
+                        if (isForwardableResponseHeader(name)) {
+                            builder.header(name, values.toArray(new String[0]));
+                        }
+                    });
+
+                    return entity.getBody() != null
+                            ? builder.body(entity.getBody(), byte[].class)
+                            : builder.build();
+                });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal Route Handlers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private Mono<ServerResponse> handleHealth(ServerRequest request) {
+        String requestId = resolveRequestIdFromRequest(request);
+        String body = """
+                {
+                  "status":    "UP",
+                  "service":   "api-gateway",
+                  "timestamp": "%s",
+                  "requestId": "%s"
+                }
+                """.formatted(Instant.now(), requestId);
+        return ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body);
+    }
+
+    private Mono<ServerResponse> handleFallback(ServerRequest request) {
+        String requestId   = resolveRequestIdFromRequest(request);
+        String triggeredBy = request.path().replaceFirst("^/fallback", "");
+        log.warn("Fallback triggered path={} requestId={}", triggeredBy, requestId);
+        String body = """
+                {
+                  "type":        "https://httpstatuses.com/503",
+                  "title":       "Service Unavailable",
+                  "status":      503,
+                  "detail":      "The requested service is temporarily unavailable. Please retry shortly.",
+                  "triggeredBy": "%s",
+                  "requestId":   "%s"
+                }
+                """.formatted(triggeredBy, requestId);
+        return ServerResponse.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .bodyValue(body);
+    }
+
+    private Mono<ServerResponse> handlePublic(ServerRequest request) {
+        String requestId = resolveRequestIdFromRequest(request);
+        String body = """
+                {
+                  "path":      "%s",
+                  "requestId": "%s",
+                  "message":   "Public resource."
+                }
+                """.formatted(request.path(), requestId);
+        return ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body);
+    }
+
+    private Mono<ServerResponse> handleNotFound(ServerRequest request) {
+        String requestId = resolveRequestIdFromRequest(request);
+        log.warn("No route matched path={} method={} requestId={}",
+                request.path(), request.method(), requestId);
+        String body = """
+                {
+                  "type":      "https://httpstatuses.com/404",
+                  "title":     "Not Found",
+                  "status":    404,
+                  "detail":    "No route found for '%s'.",
+                  "requestId": "%s"
+                }
+                """.formatted(request.path(), requestId);
+        return ServerResponse.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .bodyValue(body);
+    }
+
+    private Mono<ServerResponse> redirectToFallback(String originalPath) {
+        String fallbackPath = "/fallback" + originalPath;
+        log.info("Redirecting to fallback path={}", fallbackPath);
+        return ServerResponse.temporaryRedirect(URI.create(fallbackPath)).build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Circuit Breaker
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private CircuitBreaker buildCircuitBreaker(CircuitBreakerRegistry registry) {
+
         CircuitBreakerConfig config = CircuitBreakerConfig.custom()
                 .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
                 .slidingWindowSize(10)
@@ -336,105 +382,102 @@ public class RouteConfig {
                 .automaticTransitionFromOpenToHalfOpenEnabled(true)
                 .recordExceptions(Exception.class)
                 .build();
-        CircuitBreaker cb = registry.circuitBreaker(DOWNSTREAM_CB_NAME, config);
-        // Attach event listeners for observability
+
+        CircuitBreaker cb = registry.circuitBreaker(CB_NAME, config);
+
         cb.getEventPublisher()
-                .onStateTransition(event ->
-                        log.info("Circuit breaker '{}' state transition: {} → {}",
-                                DOWNSTREAM_CB_NAME,
-                                event.getStateTransition().getFromState(),
-                                event.getStateTransition().getToState()))
-                .onError(event ->
-                        log.error("Circuit breaker '{}' recorded error: {}",
-                                DOWNSTREAM_CB_NAME, event.getThrowable().getMessage()))
-                .onSlowCallRateExceeded(event ->
-                        log.warn("Circuit breaker '{}' slow-call rate exceeded: {}%",
-                                DOWNSTREAM_CB_NAME, event.getSlowCallRate()));
+                .onStateTransition(e -> log.warn(
+                        "CB state transition {} → {}",
+                        e.getStateTransition().getFromState(),
+                        e.getStateTransition().getToState()))
+                .onError(e -> log.error(
+                        "CB recorded error: {}",
+                        e.getThrowable().getMessage()))
+                .onSlowCallRateExceeded(e -> log.warn(
+                        "CB slow-call rate exceeded: {}%",
+                        e.getSlowCallRate()));
+
         return cb;
     }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    private boolean isReadMethod(HttpMethod method) {
+        return method == HttpMethod.GET
+                || method == HttpMethod.DELETE
+                || method == HttpMethod.HEAD;
+    }
+
     /**
-     * Resolves the authenticated subject from the Reactor Context.
-     *
-     * <p>The {@link JWTClaimsSet} is placed in the context by
-     * {@link JwtVerificationFilter} after successful JWT verification.
-     *
-     * @param ctx the Reactor ContextView from the current subscription
-     * @return the {@code sub} claim, or {@code "anonymous"} if not present
+     * Headers safe to forward to downstream services.
+     * Uses a blocklist — anything not explicitly blocked is forwarded.
      */
-    private String resolveSubject(reactor.util.context.ContextView ctx) {
+    private boolean isSafeHeader(String name) {
+        return name != null && !BLOCKED_HEADERS.contains(name.toLowerCase());
+    }
+
+    /**
+     * Response headers from downstream that should be passed back to the caller.
+     * Includes Content-Disposition and all custom X- headers set by doc-service.
+     */
+    private boolean isForwardableResponseHeader(String name) {
+        if (name == null) return false;
+        String lower = name.toLowerCase();
+        return lower.equals("content-disposition")
+                || lower.startsWith("x-");
+    }
+
+    private String resolveRequestId(ContextView ctx) {
+        return ctx.getOrDefault(RequestIdFilter.REQUEST_ID_CONTEXT_KEY, "none");
+    }
+
+    /**
+     * Reads requestId directly from the incoming request header
+     * (used in internal handlers that run outside deferContextual).
+     */
+    private String resolveRequestIdFromRequest(ServerRequest request) {
+        return request.headers().firstHeader(HEADER_REQUEST_ID) != null
+                ? request.headers().firstHeader(HEADER_REQUEST_ID)
+                : "none";
+    }
+
+    /**
+     * Reads the authenticated subject from the Reactor Context.
+     * Set by JwtVerificationFilter after token validation.
+     * Returns "anonymous" for public/unprotected paths.
+     */
+    private String resolveSubject(ContextView ctx) {
         try {
             JWTClaimsSet claims = ctx.getOrDefault(
                     JwtVerificationFilter.CLAIMS_CONTEXT_KEY, null);
-            if (claims == null) {
-                return "anonymous";
-            }
+            if (claims == null) return "anonymous";
             String sub = claims.getSubject();
             return sub != null ? sub : "<no-sub>";
         } catch (Exception ex) {
-            log.warn("Could not resolve subject from claims context: {}", ex.getMessage());
+            log.warn("Could not resolve subject from JWT claims: {}", ex.getMessage());
             return "<unknown>";
         }
     }
-    /**
-     * Builds a stub downstream response for demonstration purposes.
-     *
-     * <p><strong>Replace this method</strong> with a real
-     * {@link org.springframework.web.reactive.function.client.WebClient}
-     * proxy call to the target microservice in production.
-     *
-     * @param path      the requested API path
-     * @param method    the HTTP method
-     * @param subject   the authenticated subject forwarded from JWT claims
-     * @param requestId the correlation request ID
-     * @return a {@link Mono} emitting a stub {@link ServerResponse}
-     */
-    private Mono<ServerResponse> buildStubResponse(
-            String path,
-            String method,
-            String subject,
-            String requestId) {
-        log.info("Building stub response for path={} method={}", path, method);
-        String body = String.format("""
-                {
-                  "path":      "%s",
-                  "method":    "%s",
-                  "subject":   "%s",
-                  "requestId": "%s",
-                  "timestamp": "%s",
-                  "message":   "API request processed successfully. Replace this stub with a real downstream WebClient call."
-                }
-                """, path, method, subject, requestId, Instant.now());
-        return ServerResponse.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body);
-    }
-    /**
-     * Redirects the client to the fallback endpoint when the circuit breaker
-     * is open or the downstream call fails.
-     *
-     * <p>Uses an HTTP {@code 307 Temporary Redirect} to the {@code /fallback}
-     * path mirroring the original API path (e.g. {@code /api/orders} →
-     * {@code /fallback/api/orders}).  This allows the fallback handler to
-     * log which downstream route triggered the fallback.
-     *
-     * @param request   the original API request
-     * @param path      the original API path
-     * @param requestId the correlation request ID
-     * @return a {@code 307} redirect response to the fallback endpoint
-     */
-    private Mono<ServerResponse> redirectToFallback(
-            ServerRequest request,
-            String path,
-            String requestId) {
-        String fallbackPath = "/fallback" + path;
-        log.info("Redirecting to fallback — originalPath={} fallbackPath={} requestId={}",
-                path, fallbackPath, requestId);
-        return ServerResponse
-                .temporaryRedirect(URI.create(fallbackPath))
-                .build();
-    }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Exceptions
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Wraps a 4xx or 5xx response from a downstream service.
+     * Caught in the proxy layer and returned directly to the caller —
+     * these are NOT circuit-breaker failures and do NOT trigger the fallback.
+     */
+    private static final class DownstreamClientException extends RuntimeException {
+        final int    statusCode;
+        final String body;
+
+        DownstreamClientException(int statusCode, String body) {
+            super("Downstream returned HTTP " + statusCode);
+            this.statusCode = statusCode;
+            this.body       = body;
+        }
+    }
 }
